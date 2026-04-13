@@ -110,62 +110,47 @@ Why first:
 ```text
 nginz-njs/
   README.md
-  docs/
-  examples/
-    stock-nginx/
-    nginz/
-  libs/
-    core/
-    http/
-    crypto/
-    testing/
+  package.json
   modules/
     authz/
     workflow/
     feature-flags/
-  schemas/
   scripts/
+  tests/
+    authz/
+    workflow/
+    feature-flags/
   registry/
+  submodules/
 ```
 
 ## Per-module structure
 
 Each module should remain self-contained.
+A module can be preferably a gleam package which depends on `ngs` package, the gleam bindings to njs.
+We strive to use FP composibility and immutability features to build the modules.
 
 ```text
 modules/<name>/
   README.md
+  gleam.toml
   module.json
-  nginx/
-    http/
-    stream/
-  lib/
-  examples/
-  tests/
-    fixtures/
+  src/
+  test/
   docs/
 ```
 
 Recommended purpose of each part:
 
 - `module.json`: machine-readable metadata for future packaging/distribution
-- `nginx/http` or `nginx/stream`: nginx-facing entry files and config snippets
-- `lib/`: reusable JS logic internal to the module
-- `examples/`: runnable examples, preferably minimal and task-oriented
-- `tests/`: integration-focused tests and fixtures
+- `test/`: gleam tests 
 - `docs/`: design notes, limitations, and operational guidance
 
 ## Shared libraries
 
-The `libs/` area should stay small and only hold things that are obviously shared, such as:
-
-- request helpers
-- shared-dict wrappers
-- crypto helpers
-- logging helpers
-- test utilities
-
-If a helper is too specific to one module, keep it inside that module instead.
+- create dedicated gleam package for shared utilities and helpers
+- if a helper is too specific to one module, keep it inside that module instead.
+- use gleam package dependency
 
 ## Suggested early conventions
 
@@ -177,7 +162,6 @@ Each module should eventually expose metadata like:
 - version
 - type (`http`, `stream`, or both)
 - entry file
-- dependencies on shared libs
 - compatibility notes for nginx / njs versions
 
 ### Packaging
@@ -195,9 +179,8 @@ No installer or registry is required yet.
 
 We should aim for:
 
+- integration tests with bun
 - module-local tests inside each module
-- example-based verification
-- both stock nginx and nginz-oriented examples where useful
 
 ## Immediate next steps
 
