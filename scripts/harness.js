@@ -18,27 +18,29 @@ export function ensureBuild(moduleName) {
   if (result.exitCode !== 0) throw new Error("build failed");
 }
 
-function createRuntimeDir(moduleName) {
-  const runtimeDir = join(ROOT, "dist", moduleName, "runtime");
-  if (existsSync(runtimeDir)) rmSync(runtimeDir, { recursive: true });
-  mkdirSync(join(runtimeDir, "logs"), { recursive: true });
-  return runtimeDir;
+function preparePrefix(moduleName) {
+  // Use dist/<name>/ as prefix so js_path "njs/" resolves to dist/<name>/njs/
+  const prefix = join(ROOT, "dist", moduleName);
+  const logsDir = join(prefix, "logs");
+  if (existsSync(logsDir)) rmSync(logsDir, { recursive: true });
+  mkdirSync(logsDir, { recursive: true });
+  return prefix;
 }
 
 export async function startNginx(configPath, moduleName) {
-  const runtimeDir = createRuntimeDir(moduleName);
+  const prefix = preparePrefix(moduleName);
   const absConfig = isAbsolute(configPath)
     ? configPath
     : join(ROOT, configPath);
 
-  nginxProcess = spawn([NGINX_BIN, "-c", absConfig, "-p", runtimeDir], {
+  nginxProcess = spawn([NGINX_BIN, "-c", absConfig, "-p", prefix], {
     stdout: "inherit",
     stderr: "inherit",
     cwd: ROOT,
   });
 
   await waitForPort(TEST_PORT);
-  return runtimeDir;
+  return prefix;
 }
 
 export async function stopNginx() {
