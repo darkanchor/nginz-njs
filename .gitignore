@@ -1,0 +1,4 @@
+dist/
+node_modules/
+modules/*/build/
+modules/*/manifest.toml

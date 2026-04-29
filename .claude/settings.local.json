@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/kaiwu/Documents/gitea/nginz/docs/**)",
+      "Read(//home/kaiwu/Documents/cgit/ngs/**)",
+      "Bash(gleam --version)",
+      "Bash(bun --version)",
+      "Bash(gleam test *)",
+      "Bash(gleam build *)",
+      "Bash(bun scripts/test.js)",
+      "Bash(bun *)"
+    ]
+  }
+}

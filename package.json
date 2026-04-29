@@ -1,0 +1,14 @@
+{
+  "name": "nginz-njs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build":        "bun scripts/build.js",
+    "build:module": "bun scripts/build.js",
+    "test:unit":    "bun scripts/test.js",
+    "test:int":     "bun test 'modules/**/tests/**/*.test.js'",
+    "test":         "bun scripts/test.js && bun test 'modules/**/tests/**/*.test.js'",
+    "clean":        "rm -rf dist modules/*/build modules/*/manifest.toml"
+  },
+  "devDependencies": {}
+}

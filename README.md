@@ -1,203 +1,288 @@
 # nginz-njs
 
-`nginz-njs` is a companion project to `nginz`.
+**Scripted nginx modules in Gleam — functional, type-safe, composable.**
 
-Its purpose is to build a reusable **njs + QuickJS module ecosystem** that works with:
+`nginz-njs` is the scripted companion to [`nginz`](https://github.com/kaiwu/nginz). Where `nginz` provides high-performance native modules built in Zig, this monorepo provides the scripted layer: policy logic, orchestration, and product-specific composition — authored in [Gleam](https://gleam.run) and compiled to [njs](https://nginx.org/en/docs/njs/) via [QuickJS](https://bellard.org/quickjs/).
 
-- stock nginx with `ngx_http_js_module` / `ngx_stream_js_module`
-- `nginz`, where native Zig modules and njs modules can complement each other
+## Why Gleam
 
-This project is **not** a second runtime effort and **not** a Lua replacement project. The runtime direction is already decided by nginx njs plus QuickJS. The job here is to build the ecosystem around it.
+njs already gives us a capable scripting surface: request hooks, body filters, subrequests, `ngx.fetch()`, shared dict, and stream APIs. The gap is not the runtime. The gap is **how we author modules on top of it**.
 
-## Goal
+Plain JavaScript works, but it offers no type safety, no structural guarantees, and no natural composability model. Policy logic written in JS drifts toward ad-hoc branching trees that are hard to test and hard to reuse.
 
-Create a monorepo of **self-contained njs modules** that are:
+Gleam solves this:
 
-- independently usable
-- individually testable
-- easy to package and document
-- suitable for future distribution tooling
+- **Type safety at compile time** — authorization rules, routing decisions, flag evaluations are checked before deployment
+- **FP composability** — rules are first-class functions; combine them with `all_of`, `any_of`, and pipeline operators
+- **Immutability by default** — no shared mutable state; each request flows through a pure transformation pipeline
+- **Gleam packages** — each module is independently publishable to [Hex](https://hex.pm), versioned, and reusable
 
-The long-term aim is to give `nginz` an OpenResty-like programmable ecosystem without inventing a separate scripting language stack.
+The underlying runtime is still njs + QuickJS. Gleam compiles to ES2020 JavaScript, which njs with QuickJS handles natively. No second runtime, no Lua detour.
 
-## Core design principles
+## Architecture
 
-1. **Companion, not replacement**
-   - `nginz` stays focused on native Zig modules, lower-level nginx integration, performance-sensitive engines, and platform primitives.
-   - `nginz-njs` focuses on policy logic, orchestration, customization, and reusable scripting modules.
+```
+                 ┌─────────────────────────────────────┐
+                 │           nginz (native)             │
+                 │  Zig modules: WAF, JWT, OIDC,        │
+                 │  ratelimit, healthcheck, canary,      │
+                 │  redis, pgrest, consul, ...           │
+                 └─────────────────┬───────────────────┘
+                                   │ nginx variables, subrequests
+                 ┌─────────────────▼───────────────────┐
+                 │         nginz-njs (scripted)         │
+                 │  Gleam packages → njs modules:       │
+                 │  authz, workflow, feature-flags, ... │
+                 │  (this repo)                         │
+                 └─────────────────┬───────────────────┘
+                                   │ Gleam bindings
+                 ┌─────────────────▼───────────────────┐
+                 │              ngs                     │
+                 │  Gleam ↔ njs bindings package        │
+                 │  http, stream, crypto, fs, ngx, ...  │
+                 └─────────────────────────────────────┘
+```
 
-2. **Self-contained modules**
-   - each module should live in its own directory
-   - each module should have its own docs, examples, tests, and nginx-facing entry files
+- **nginz** stays focused on native primitives, performance-critical engines, and platform integrations
+- **nginz-njs** handles policy logic, orchestration, and product customization
+- **[ngs](https://hex.pm/packages/ngs)** provides the typed Gleam bindings to the njs runtime API
 
-3. **Monorepo, not a single giant package**
-   - we want shared conventions, but modules must remain separately understandable and separately shippable
+## What composability looks like
 
-4. **No package manager first**
-   - first ship good modules
-   - then define packaging conventions
-   - only later consider a registry / installer story
+```gleam
+// modules/authz/src/policy.gleam
 
-5. **Native vs njs boundary**
-   - keep WAF core, shared-memory engines, balancer internals, deep stream/TCP logic, and performance-critical scanners native
-   - use njs for orchestration, policy logic, gateway composition, and product-specific glue
+pub type Decision { Allow  Deny(reason: String) }
+pub type Rule = fn(Context) -> Decision
 
-## What njs already gives us
+pub fn evaluate(ctx: Context, rules: List(Rule)) -> Decision {
+  list.fold_until(rules, Allow, fn(_, rule) {
+    case rule(ctx) {
+      Allow    -> list.Continue(Allow)
+      Deny(r)  -> list.Stop(Deny(r))
+    }
+  })
+}
 
-njs already provides a strong programmable surface, including:
+pub fn method_in(allowed: List(String)) -> Rule {
+  fn(ctx) {
+    case list.contains(allowed, ctx.method) {
+      True  -> Allow
+      False -> Deny("method not allowed: " <> ctx.method)
+    }
+  }
+}
 
-- request/response hooks
-- header/body filters
-- subrequests
-- `ngx.fetch()`
-- variables access
-- timers
-- filesystem access
-- `ngx.shared`
-- stream APIs
-- periodic handlers
+pub fn path_prefix(prefix: String) -> Rule {
+  fn(ctx) {
+    case string.starts_with(ctx.path, prefix) {
+      True  -> Allow
+      False -> Deny("path not allowed: " <> ctx.path)
+    }
+  }
+}
 
-So this project should not try to recreate those primitives. It should build **reusable modules on top of them**.
+pub fn all_of(rules: List(Rule)) -> Rule {
+  fn(ctx) { evaluate(ctx, rules) }
+}
+```
 
-## First candidate modules
+Rules are plain functions. You build policies by composing them:
 
-The first wave should prove the model with a few practical modules:
+```gleam
+let api_policy = all_of([
+  method_in(["GET", "POST"]),
+  path_prefix("/api"),
+  any_of([has_claim("role", "admin"), has_claim("role", "user")]),
+])
+```
 
-### 1. authz
+Pure, testable, no hidden state.
 
-Use njs for:
+## Module catalog
 
-- path / method / header authorization logic
-- JWT / OIDC claim-to-policy mapping
-- custom access decisions
+| Module | Purpose | Status |
+|---|---|---|
+| [`authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
+| [`workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
+| [`feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
 
-Why first:
+## Dev / test / package
 
-- policy logic is script-friendly
-- strong gateway value
-- pairs naturally with native auth modules in `nginz`
+### Build pipeline
 
-### 2. workflow
+Each module is an independent Gleam package that targets the `javascript` runtime:
 
-Use njs for:
+```
+modules/<name>/src/*.gleam
+        │
+        ▼  gleam build --target javascript
+modules/<name>/build/dev/javascript/<name>/<name>.mjs
+        │
+        ▼  Bun.build() (native bundler, no esbuild install needed)
+dist/<name>/njs/app.js    ← loaded by nginx via js_import
+dist/<name>/nginx.conf    ← example nginx configuration
+```
 
-- subrequest orchestration
-- `ngx.fetch()`-driven enrichment
-- gateway workflows
-- remote auth / remote config / composition logic
+### Commands
 
-Why first:
+```bash
+# --- build ---
+bun run build                    # build all modules → dist/
+bun run build:module authz       # build one module only
 
-- one of the strongest scripting use cases
-- hard to justify as one-off native modules repeatedly
+# --- unit tests (pure Gleam, no nginx required) ---
+bun run test:unit                # gleam test for all modules
+bun run test:unit authz          # gleam test for one module
+# or directly from a module directory:
+cd modules/authz && gleam test
 
-### 3. feature-flags
+# --- integration tests (requires nginx binary) ---
+make                             # build nginx from submodules first
+bun run test:int                 # bun test against real nginx, all modules
+bun test modules/authz/tests     # one module only
+KEEP_LOGS=1 bun test modules/authz/tests  # keep runtime dir for debug
 
-Use njs for:
+# --- both ---
+bun test                         # unit + integration
 
-- experiment routing
-- flag evaluation
-- rollout policies
-- request bucketing
+# --- clean ---
+bun run clean                    # remove dist/, build/, manifest.toml
+```
 
-Why first:
+### Packaging
 
-- logic-heavy and easy to evolve
-- complements canary and traffic modules well
+There is no publish step yet. The deliverable for each module is:
 
-## Proposed repository structure
+```
+dist/<name>/
+  njs/app.js      ← the bundled njs script; load with js_import in nginx
+  nginx.conf      ← example configuration
+```
 
-```text
+Copy `dist/<name>/` to your nginx deployment. The `module.json` at the module root carries version and compatibility metadata for future distribution tooling.
+
+When modules are stable they will be published to [Hex](https://hex.pm) as independent Gleam packages, so users can depend on them directly in their own Gleam njs projects via `gleam add authz`.
+
+### Requirements
+
+- [Gleam](https://gleam.run) >= 1.14.0
+- [Bun](https://bun.sh) >= 1.1.0
+- nginx with njs + QuickJS engine (see `Makefile` for building from submodules)
+
+## Project structure
+
+```
 nginz-njs/
-  README.md
-  package.json
-  modules/
-    authz/
-    workflow/
-    feature-flags/
-  scripts/
-  tests/
-    authz/
-    workflow/
-    feature-flags/
-  registry/
-  submodules/
+├── modules/
+│   ├── authz/              ← each module is a Gleam package
+│   │   ├── gleam.toml      ← Gleam project config, declares ngs dependency
+│   │   ├── module.json     ← machine-readable metadata for distribution
+│   │   ├── nginx.conf      ← example nginx configuration
+│   │   ├── src/            ← Gleam source modules
+│   │   ├── test/           ← Gleam unit tests (gleam test)
+│   │   ├── tests/          ← bun integration tests against real nginx
+│   │   └── docs/           ← design notes, limitations, operational guidance
+│   ├── workflow/
+│   └── feature_flags/
+├── scripts/
+│   ├── build.js            ← build all/one module: gleam build + Bun.build()
+│   ├── test.js             ← gleam unit tests for all/one module
+│   ├── harness.js          ← bun integration test harness (nginx lifecycle)
+│   └── preload.js          ← bun preload: build before integration tests run
+├── registry/
+│   └── index.json          ← module catalog
+├── dist/                   ← build output (gitignored)
+├── submodules/
+│   └── nginx/              ← nginx source for building the test binary
+└── Makefile                ← builds nginx binary for integration tests
 ```
 
 ## Per-module structure
 
-Each module should remain self-contained.
-A module can be preferably a gleam package which depends on `ngs` package, the gleam bindings to njs.
-We strive to use FP composibility and immutability features to build the modules.
-
-```text
+```
 modules/<name>/
-  README.md
-  gleam.toml
-  module.json
-  src/
-  test/
-  docs/
+├── gleam.toml        Gleam package config; declares ngs as dependency
+├── module.json       name, version, nginx/njs compatibility metadata
+├── nginx.conf        example nginx config showing the module in use
+├── src/
+│   ├── <name>.gleam  entry point; exports() returns the JsObject for nginx
+│   └── *.gleam       supporting modules (policy, pipeline, evaluation, …)
+├── test/
+│   └── *_test.gleam  Gleam unit tests — run with `gleam test`
+├── tests/
+│   └── <scenario>/
+│       ├── nginx.conf  scenario-specific nginx config (optional override)
+│       └── do.test.js  bun integration test
+└── docs/
+    └── README.md     design rationale, limitations, operational guidance
 ```
 
-Recommended purpose of each part:
+## Authoring a new module
 
-- `module.json`: machine-readable metadata for future packaging/distribution
-- `test/`: gleam tests 
-- `docs/`: design notes, limitations, and operational guidance
+1. Create the module directory and Gleam package:
 
-## Shared libraries
+```bash
+mkdir modules/my_module
+cd modules/my_module
+gleam new . --name my_module
+```
 
-- create dedicated gleam package for shared utilities and helpers
-- if a helper is too specific to one module, keep it inside that module instead.
-- use gleam package dependency
+2. Add `ngs` as a dependency in `gleam.toml`:
 
-## Suggested early conventions
+```toml
+[dependencies]
+ngs = ">= 1.0.8 and < 2.0.0"
+```
 
-### module.json
+3. Write the entry point with an `exports()` function:
 
-Each module should eventually expose metadata like:
+```gleam
+// src/my_module.gleam
+import njs/http.{type HTTPRequest}
+import njs/ngx.{type JsObject}
 
-- name
-- version
-- type (`http`, `stream`, or both)
-- entry file
-- compatibility notes for nginx / njs versions
+fn handler(r: HTTPRequest) -> Nil {
+  r |> http.return_text(200, "OK\n")
+}
 
-### Packaging
+pub fn exports() -> JsObject {
+  ngx.object()
+  |> ngx.merge("handler", handler)
+}
+```
 
-Initial packaging can be simple:
+4. Create `module.json`, `nginx.conf`, unit tests, and integration tests.
 
-- module source files
-- `module.json`
-- README
-- nginx-facing entry files
+5. Register the module in `registry/index.json`.
 
-No installer or registry is required yet.
+6. Add the module to `scripts/build.js` if it needs special build steps (usually not required).
 
-### Testing
+## Native vs scripted boundary
 
-We should aim for:
+This project **only** contains scripted modules. The decision rule:
 
-- integration tests with bun
-- module-local tests inside each module
+| Build here (scripted) | Build in nginz (native) |
+|---|---|
+| Policy logic, routing rules, flag evaluation | WAF engine, rate limit counters, shared-memory state |
+| JWT claim-to-role mapping | JWT signature verification |
+| Subrequest orchestration | Circuit breaker state machine |
+| Response templating, body transforms | brotli/zstd compression |
+| Webhook signature glue | TLS / ACME certificate management |
+| Feature flag evaluation | Upstream balancer internals |
 
-## Immediate next steps
+When the performance-critical primitive is native (HMAC, JSON parsing, shared-memory atomics), the surrounding policy belongs here.
 
-1. formalize `module.json`
-2. define minimal authoring conventions for module entry files
-3. build the first three modules:
-   - `authz`
-   - `workflow`
-   - `feature-flags`
-4. add example and test conventions
-5. only then discuss packaging / registry workflow
+## Relationship to nginz roadmap
 
-## Session handoff note
+The nginz roadmap (Sprint 2+) targets a shared-dict native module and an upstream balancer module. When those land, scripted modules in this repo will be able to depend on them:
 
-If work resumes in a later session, the current intent is:
+- `workflow` can use shared dict for caching enrichment results
+- `feature_flags` can use shared dict for flag state without an external service
+- `authz` can cache introspection results by token hash
 
-- keep `nginz-njs` as a **companion monorepo** beside `nginz`
-- focus first on **real njs modules**, not infrastructure theater
-- treat njs as the **composition/customization layer** on top of native nginx and nginz primitives
-- do not drift into building a parallel Lua-style runtime stack
+This repo intentionally stays ahead of the native layer: scripted modules define what the platform needs, native primitives follow.
+
+## License
+
+Apache-2.0

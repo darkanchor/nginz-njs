@@ -1,0 +1,13 @@
+{
+  "name": "feature_flags",
+  "version": "0.1.0",
+  "description": "Feature flag evaluation with stable bucketing for A/B routing in nginx",
+  "type": ["http"],
+  "entry": "njs/app.js",
+  "exports": ["evaluate", "bucket"],
+  "nginx": ">= 1.25.0",
+  "njs": ">= 0.8.0",
+  "ngs": ">= 1.0.8",
+  "gleam": ">= 1.14.0",
+  "license": "Apache-2.0"
+}
