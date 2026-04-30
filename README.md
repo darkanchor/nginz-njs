@@ -2,7 +2,7 @@
 
 **Scripted nginx modules in Gleam — functional, type-safe, composable.**
 
-`nginz-njs` is the scripted companion to [`nginz`](https://github.com/kaiwu/nginz). Where `nginz` provides high-performance native modules built in Zig, this monorepo provides the scripted layer: policy logic, orchestration, and product-specific composition — authored in [Gleam](https://gleam.run) and compiled to [njs](https://nginx.org/en/docs/njs/) via [QuickJS](https://bellard.org/quickjs/).
+`nginz-njs` is a collection of scripted nginx modules authored in [Gleam](https://gleam.run) and compiled to [njs](https://nginx.org/en/docs/njs/) via [QuickJS](https://bellard.org/quickjs/). It works with stock, unmodified nginx — no custom binary required. Optionally pairs with [`nginz`](https://github.com/kaiwu/nginz) native modules (built in Zig) when you need signature verification, rate counters, or other performance-critical primitives alongside the scripted policy layer.
 
 ## Why Gleam
 
@@ -21,31 +21,29 @@ The underlying runtime is still njs + QuickJS. Gleam compiles to ES2020 JavaScri
 
 ## Architecture
 
+nginx is the center. Both `nginz` and `nginz-njs` are independent module sets that plug into stock, unmodified nginx — neither depends on the other.
+
 ```
-                 ┌─────────────────────────────────────┐
-                 │           nginz (native)             │
-                 │  Zig modules: WAF, JWT, OIDC,        │
-                 │  ratelimit, healthcheck, canary,      │
-                 │  redis, pgrest, consul, ...           │
-                 └─────────────────┬───────────────────┘
-                                   │ nginx variables, subrequests
-                 ┌─────────────────▼───────────────────┐
-                 │         nginz-njs (scripted)         │
-                 │  Gleam packages → njs modules:       │
-                 │  authz, workflow, feature-flags, ... │
-                 │  (this repo)                         │
-                 └─────────────────┬───────────────────┘
-                                   │ Gleam bindings
-                 ┌─────────────────▼───────────────────┐
-                 │              ngs                     │
-                 │  Gleam ↔ njs bindings package        │
-                 │  http, stream, crypto, fs, ngx, ...  │
-                 └─────────────────────────────────────┘
+  ┌──────────────────────────┐        ┌──────────────────────────────────┐
+  │      nginz (native)      │        │       nginz-njs (scripted)       │
+  │  Zig modules compiled    │        │  Gleam packages compiled to njs: │
+  │  into nginx via          │        │  authz, workflow, feature_flags  │
+  │  --add-module:           │        │  (this repo)                     │
+  │  jwt, echoz, waf,        │        │                                  │
+  │  ratelimit, canary, ...  │        │  built on ngs — typed Gleam      │
+  └────────────┬─────────────┘        │  bindings to the njs runtime API │
+               │ --add-module         └──────────────┬───────────────────┘
+               │                                     │ js_import / js_content
+               ▼                                     ▼
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │                        nginx  (stock, unmodified)                      │
+  │              njs + QuickJS engine built in via --add-module            │
+  └────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **nginz** stays focused on native primitives, performance-critical engines, and platform integrations
-- **nginz-njs** handles policy logic, orchestration, and product customization
-- **[ngs](https://hex.pm/packages/ngs)** provides the typed Gleam bindings to the njs runtime API
+Both module sets are fully compatible with the official nginx distribution. You can use neither, either, or both together — they compose through standard nginx primitives: variables, locations, subrequests, and the njs scripting surface.
+
+When used together, native modules handle the performance-critical work (signature verification, rate counters, shared-memory state) and expose results as nginx variables; scripted modules read those variables and apply policy logic in Gleam.
 
 ## What composability looks like
 
