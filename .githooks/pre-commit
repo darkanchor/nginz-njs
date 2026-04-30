@@ -1,0 +1,20 @@
+#!/bin/sh
+# Format all Gleam modules. If formatting changes anything, block the commit
+# so the formatting can be staged and committed on the next attempt.
+set -e
+
+bun scripts/format.js
+
+CHANGED=$(git diff --name-only -- '**/*.gleam')
+
+if [ -n "$CHANGED" ]; then
+  echo ""
+  echo "[pre-commit] gleam format modified files. Commit stopped so formatting can be staged."
+  echo "[pre-commit] Changed files:"
+  echo "$CHANGED"
+  echo ""
+  echo "[pre-commit] Run: git add -u && git commit <your original args>"
+  exit 1
+fi
+
+exit 0

@@ -183,7 +183,7 @@ The resulting binary is at `submodules/nginx/objs/nginx`. The `Makefile` symlink
 git config core.hooksPath .githooks
 ```
 
-This installs a pre-push hook that runs `gleam format` across all modules before every push, keeping CI's format check green.
+This installs a pre-commit hook that runs `gleam format` across all modules before every commit. If formatting changes any `.gleam` files, the hook stops the commit so you can stage the formatting changes and rerun the same commit.
 
 ### 4. Tool requirements
 
