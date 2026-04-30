@@ -1,6 +1,6 @@
 import authz/policy.{
-  type Context, Allow, Context, Deny, all_of, any_of, evaluate, has_claim,
-  method_in, not_, path_prefix, require_header,
+  type Context, Allow, Context, Deny, all_of, any_of, claim_one_of, evaluate,
+  has_claim, header_one_of, method_in, not_, path_prefix, require_header,
 }
 import gleam/dict
 import gleeunit
@@ -86,6 +86,56 @@ pub fn has_claim_deny_test() {
   |> should.equal(Deny("missing required claim: role"))
 }
 
+pub fn claim_one_of_allow_test() {
+  let ctx_c =
+    Context(..ctx("GET", "/api"), claims: dict.from_list([#("role", "user")]))
+  ctx_c
+  |> evaluate([claim_one_of("role", ["admin", "user"])])
+  |> should.equal(Allow)
+}
+
+pub fn claim_one_of_deny_missing_test() {
+  ctx("GET", "/api")
+  |> evaluate([claim_one_of("role", ["admin", "user"])])
+  |> should.equal(Deny("missing required claim: role"))
+}
+
+pub fn claim_one_of_deny_mismatch_test() {
+  let ctx_c =
+    Context(..ctx("GET", "/api"), claims: dict.from_list([#("role", "guest")]))
+  ctx_c
+  |> evaluate([claim_one_of("role", ["admin", "user"])])
+  |> should.equal(Deny("claim value mismatch: role"))
+}
+
+pub fn header_one_of_allow_test() {
+  let ctx_h =
+    Context(
+      ..ctx("GET", "/api"),
+      headers: dict.from_list([#("x-role", "internal")]),
+    )
+  ctx_h
+  |> evaluate([header_one_of("x-role", ["internal", "partner"])])
+  |> should.equal(Allow)
+}
+
+pub fn header_one_of_deny_missing_test() {
+  ctx("GET", "/api")
+  |> evaluate([header_one_of("x-role", ["internal", "partner"])])
+  |> should.equal(Deny("missing required header: x-role"))
+}
+
+pub fn header_one_of_deny_mismatch_test() {
+  let ctx_h =
+    Context(
+      ..ctx("GET", "/api"),
+      headers: dict.from_list([#("x-role", "external")]),
+    )
+  ctx_h
+  |> evaluate([header_one_of("x-role", ["internal", "partner"])])
+  |> should.equal(Deny("header value mismatch: x-role"))
+}
+
 pub fn all_of_allow_test() {
   ctx("GET", "/api/users")
   |> evaluate([all_of([method_in(["GET"]), path_prefix("/api")])])
@@ -122,10 +172,47 @@ pub fn any_of_deny_none_test() {
   |> should.equal(Deny("no rule matched"))
 }
 
+pub fn all_of_with_claim_one_of_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/users"),
+      claims: dict.from_list([#("role", "user")]),
+    )
+  ctx_c
+  |> evaluate([
+    all_of([path_prefix("/api"), claim_one_of("role", ["admin", "user"])]),
+  ])
+  |> should.equal(Allow)
+}
+
+pub fn any_of_with_header_one_of_test() {
+  let ctx_h =
+    Context(
+      ..ctx("POST", "/private"),
+      headers: dict.from_list([#("x-role", "partner")]),
+    )
+  ctx_h
+  |> evaluate([
+    any_of([
+      method_in(["GET"]),
+      header_one_of("x-role", ["internal", "partner"]),
+    ]),
+  ])
+  |> should.equal(Allow)
+}
+
 pub fn not_rule_test() {
   ctx("DELETE", "/api")
   |> evaluate([not_(method_in(["GET", "POST"]))])
   |> should.equal(Allow)
+}
+
+pub fn not_with_claim_one_of_test() {
+  let ctx_c =
+    Context(..ctx("GET", "/api"), claims: dict.from_list([#("role", "admin")]))
+  ctx_c
+  |> evaluate([not_(claim_one_of("role", ["admin", "user"]))])
+  |> should.equal(Deny("negated rule matched"))
 }
 
 pub fn evaluate_short_circuits_test() {

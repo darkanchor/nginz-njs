@@ -32,32 +32,101 @@ set $ff_key               $http_x_user_id;
 **Integration tests**
 - `tests/basic/` — sets vars inline, calls evaluate and bucket handlers, checks results
 
-## Batched todos
+## Roadmap position
 
-### Batch 1 — flag configuration
-- [ ] Add JSON flag config loading from a file (`njs/fs` readFileSync at startup) so you don't need one pair of nginx vars per flag
-- [ ] Define a `FlagConfig` type: `Dict(String, Flag)` loaded once and reused per request
-- [ ] Add `js_set`-based handler that sets a variable directly (more composable than a content handler)
+`feature_flags` is a first-priority foundation module. It should deliver real value with no native dependency at all: deterministic bucketing, explicit targeting, and routing-friendly outputs.
 
-### Batch 2 — targeting
-- [ ] Add override support: force a flag on or off for a specific key (for internal users, QA, etc.)
-- [ ] Add `ByHeader(name)` bucket key — target by arbitrary request header value
-- [ ] Add `ByQueryParam(name)` bucket key
+Anything involving shared state or hot reload is a later adapter layer, not the heart of the module.
 
-### Batch 3 — multi-variant flags
-- [ ] Extend `Flag` to support variants: `Flag(name, variants: List(#(String, Int)))` where each variant has a name and a cumulative rollout percentage
-- [ ] `evaluate_variant(flag, key) -> String` — returns the variant name instead of a boolean
-- [ ] Integration test: three-way A/B/C split with stable assignment
+## Core abstractions
 
-### Batch 4 — shared-dict persistence (blocked on nginz)
-- [ ] Once the nginz `shared_dict` native module lands: load flag config into shared memory at nginx startup
-- [ ] Hot-reload: update flag config without nginx reload (write to shared dict via admin API location)
-- [ ] Sticky overrides: persist per-user overrides in shared dict across requests
+- `Flag` — the pure flag descriptor used by the evaluator
+- `BucketKey` — the stable identity used for assignment
+- `bucket(key)` — deterministic bucket assignment
+- `is_enabled(flag, key)` — the smallest boolean evaluation surface
+- later: variant-aware flags, override types, and config lookup helpers
 
-### Batch 5 — observability
-- [ ] Emit `$ff_bucket` and `$ff_decision` as nginx variables for access log inclusion
-- [ ] Add structured logging: flag name, bucket, decision, rollout_pct on each evaluation
-- [ ] Integration test: verify log output contains expected fields
+The evaluator should stay entirely side-effect free. Configuration lookup and request-to-key resolution belong at the nginx adapter boundary.
+
+## Scripted core vs optional native integration
+
+### Scripted core
+
+- rollout evaluation
+- targeting by request-local identity
+- override precedence
+- variant selection
+- logging and routing-friendly outputs
+
+### Optional native integration
+
+- future shared runtime state once a native shared store exists
+- hot reload or sticky overrides backed by native state primitives
+
+The module should be production-useful in pure scripted mode first. Native state should improve ergonomics or dynamism, not define the evaluation model.
+
+Cross-module direction: when runtime-backed flag state arrives, `feature_flags` should prefer composing a reusable cache/state layer such as `mlcache` rather than absorbing cache policy directly into the evaluator.
+
+## Phased implementation plan
+
+### Phase 1 — formalize the config model
+
+Goal: make the pure evaluator reusable regardless of where configuration comes from.
+
+- [ ] keep nginx variable-driven config as the baseline contract
+- [ ] add a pure `FlagConfig` lookup model and parsing helpers
+- [ ] add a `js_set`-friendly evaluation export so flags can feed routing directly
+- [ ] document the thin adapter pattern: resolve config → resolve key → evaluate
+
+### Phase 2 — add richer targeting and overrides
+
+Goal: increase expressiveness without introducing shared state.
+
+- [ ] add key resolvers for header, query param, and explicit variable-derived identity
+- [ ] add request-local force-on and force-off overrides
+- [ ] define clear precedence between overrides and rollout percentages
+- [ ] document how targeting stays deterministic even when request sources differ
+
+### Phase 3 — add multi-variant evaluation
+
+Goal: make the module useful for real product rollout rather than only boolean gates.
+
+- [ ] introduce variant-capable flag types
+- [ ] add `evaluate_variant(flag, key)` with stable assignment semantics
+- [ ] keep boolean evaluation as a thin specialization of the same bucketing model
+- [ ] add integration coverage for A/B/C style routing using nginx variables only
+
+### Phase 4 — add observability and composition outputs
+
+Goal: make flag decisions easy to inspect and reuse across the nginx config.
+
+- [ ] emit decision metadata such as flag name, bucket, and variant for logging
+- [ ] expose routing-friendly outputs via `js_set` or equivalent handlers
+- [ ] document patterns where flag output feeds `workflow` or `authz` decisions
+
+### Phase 5 — optional runtime state backends
+
+Goal: improve operability later without disturbing the pure evaluator.
+
+- [ ] optionally support startup-loaded file config once the variable-driven baseline is solid
+- [ ] later support shared-state-backed config and sticky overrides when the native primitives are ready
+- [ ] keep all backend choice behind the same pure evaluation API
+
+## TDD plan
+
+- [ ] unit-test bucket determinism and rollout boundaries exhaustively
+- [ ] unit-test config parsing defaults and override precedence
+- [ ] add `tests/basic/` coverage for both `js_content` and `js_set` usage
+- [ ] add integration tests for header/query-based targeting
+- [ ] isolate future shared-state adapters from the baseline deterministic evaluator tests
+
+## Atomic commit strategy
+
+- [ ] `feature_flags: add config lookup model and js_set evaluation`
+- [ ] `feature_flags: add targeting and override primitives`
+- [ ] `feature_flags: add variant evaluation`
+- [ ] `feature_flags: add observability outputs`
+- [ ] `docs: document feature flag composition patterns and optional state backends`
 
 ## Verification checklist
 

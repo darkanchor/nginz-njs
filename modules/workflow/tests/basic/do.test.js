@@ -26,4 +26,11 @@ describe("workflow — chain subrequest", () => {
     const body = await res.text();
     expect(body).toBe("upstream-response");
   });
+
+  test("delegates external fetch through http_client and returns its body", async () => {
+    const res = await fetch(`${TEST_URL}/fetch-chain`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toBe("fixture-response");
+  });
 });

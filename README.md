@@ -19,6 +19,19 @@ Gleam solves this:
 
 The underlying runtime is still njs + QuickJS. Gleam compiles to ES2020 JavaScript, which njs with QuickJS handles natively. No second runtime, no Lua detour.
 
+## Modules are building blocks first
+
+Every module in this repo has two distinct surfaces:
+
+1. a **reusable Gleam library surface** under `src/<name>/...`, made of clean `pub` types and functions
+2. a **final njs interface** in `src/nginz_njs_<name>.gleam`, exposed through `pub fn exports() -> JsObject`
+
+The project encourages FP composibility and modularity, a highly reusable component might not have its own `exports()` at all.
+
+The first surface is the real product. Modules are meant to be used by other Gleam modules inside/outside this monorepo as ordinary building blocks, as long as they expose stable public interfaces. The `exports()` function is the last-mile adapter that turns those building blocks into an nginx-facing njs module and, in this repo today, is also what integration tests exercise.
+
+So we should not design modules as isolated one-off nginx scripts. We should design reusable Gleam packages that can also be exported to nginx. For example, `workflow` should be able to depend on and use `http_client` as a Gleam library, rather than re-owning fetch logic at the handler layer.
+
 ## Architecture
 
 nginx is the center. Both `nginz` and `nginz-njs` are independent module sets that plug into stock, unmodified nginx — neither depends on the other.
@@ -27,8 +40,8 @@ nginx is the center. Both `nginz` and `nginz-njs` are independent module sets th
   ┌──────────────────────────┐        ┌──────────────────────────────────┐
   │      nginz (native)      │        │       nginz-njs (scripted)       │
   │  Zig modules compiled    │        │  Gleam packages compiled to njs: │
-  │  into nginx via          │        │  authz, workflow, feature_flags  │
-  │  --add-module:           │        │  (this repo)                     │
+  │  into nginx via          │        │  authz, workflow, feature_flags, │
+  │  --add-module:           │        │  http_client (this repo)         │
   │  jwt, echoz, waf,        │        │                                  │
   │  ratelimit, canary, ...  │        │  built on ngs — typed Gleam      │
   └────────────┬─────────────┘        │  bindings to the njs runtime API │
@@ -44,6 +57,8 @@ nginx is the center. Both `nginz` and `nginz-njs` are independent module sets th
 Both module sets are fully compatible with the official nginx distribution. You can use neither, either, or both together — they compose through standard nginx primitives: variables, locations, subrequests, and the njs scripting surface.
 
 When used together, native modules handle the performance-critical work (signature verification, rate counters, shared-memory state) and expose results as nginx variables; scripted modules read those variables and apply policy logic in Gleam.
+
+Inside `nginz-njs` itself, composability happens at the Gleam module boundary first. The deployable nginx module is the outer shell around a reusable Gleam package.
 
 ## What composability looks like
 
@@ -97,13 +112,33 @@ let api_policy = all_of([
 
 Pure, testable, no hidden state.
 
+At the repo level, composability should also look like this:
+
+- `http_client` provides request/response and fetch primitives
+- `workflow` builds orchestration on top of those primitives
+- `authz` can use `http_client` for external decision points without owning the HTTP client abstraction itself
+- `feature_flags` stays a pure evaluation building block that other modules can call directly from Gleam
+- `response_transform` should shape bodies for `workflow` or `webhook` rather than owning orchestration
+- `webhook` should compose `http_client` for delivery and `response_transform` for payload shaping
+- `session` should provide reusable session facts that `authz` and `feature_flags` can consume
+- `mlcache` should provide reusable cache semantics for `authz`, `feature_flags`, `webhook`, and `session`
+- `metrics` should be the reusable instrumentation surface consumed by other modules
+
+In other words: **`exports()` is the adapter layer, not the whole module design.**
+
 ## Module catalog
 
 | Module | Purpose | Status |
 |---|---|---|
+| [`nginz_njs_http_client`](modules/http_client/) | Typed request-building scaffold for a future `ngx.fetch()` wrapper | scaffold |
 | [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
 | [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
 | [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
+| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling and explicit shared-dict blocker | scaffold |
+| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics and explicit shared-dict blocker | scaffold |
+| [`nginz_njs_response_transform`](modules/response_transform/) | Response/body-shaping scaffold for reusable transform plans | scaffold |
+| [`nginz_njs_webhook`](modules/webhook/) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
+| [`nginz_njs_metrics`](modules/metrics/) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
 
 ## Setup
 
@@ -173,6 +208,8 @@ dist/<name>/njs/app.js    ← loaded by nginx via js_import
 dist/<name>/nginx.conf    ← example nginx configuration
 ```
 
+The important implication is that `gleam build` produces a normal reusable Gleam package first, and only then do we bundle the package's final `exports()` entrypoint into the njs artifact loaded by nginx.
+
 ### Commands
 
 ```bash
@@ -232,6 +269,7 @@ nginz-njs/
 │   │   ├── test/           ← Gleam unit tests (gleam test)
 │   │   ├── tests/          ← bun integration tests against real nginx
 │   │   └── docs/           ← design notes, limitations, operational guidance
+│   ├── http_client/
 │   ├── workflow/
 │   └── feature_flags/
 ├── scripts/
@@ -257,8 +295,8 @@ modules/<name>/
 ├── gleam.toml        package name "nginz_njs_<name>", version, ngs dependency
 ├── nginx.conf        example nginx config showing the module in use
 ├── src/
-│   ├── nginz_njs_<name>.gleam  entry point; exports() returns the JsObject for nginx
-│   └── <name>/                 submodules (namespaced to src/<name>/)
+│   ├── nginz_njs_<name>.gleam  final njs adapter; exports() returns the JsObject for nginx
+│   └── <name>/                 reusable library modules with clean `pub` interfaces
 │       └── *.gleam
 ├── test/
 │   └── nginz_njs_<name>_test.gleam  Gleam unit tests (gleeunit entry)
@@ -320,6 +358,8 @@ nginz = ["jwt"]   # omit the section entirely if no native deps
 
 5. Create `nginx.conf`, unit tests in `test/`, and integration tests in `tests/<scenario>/`.
 
+When authoring a module, keep the `exports()` file thin. If another module could plausibly reuse the logic, it belongs under `src/<name>/...` as part of the building-block surface rather than inside the nginx adapter.
+
 ## Native vs scripted boundary
 
 This project **only** contains scripted modules. The decision rule:
@@ -346,6 +386,7 @@ make NGINZ_MODULES="echoz jwt requestid"  # extend the set
 
 Scripted modules in this repo orchestrate and compose the native primitives:
 
+- `nginz_njs_http_client` is the typed scripted wrapper layer over built-in `ngx.fetch()`
 - `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
 - `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
 - `nginz_njs_feature_flags` will use shared-dict state once the native `shared_dict` module lands

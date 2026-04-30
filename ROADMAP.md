@@ -32,11 +32,11 @@ When both columns apply: build a native primitive and expose it through njs. Tha
 
 #### `http_client` — `ngx.fetch()` wrapper
 
-**Status:** not started  
+**Status:** scaffold  
 **Lua analog:** `lua-resty-http`  
 **Blockers:** none
 
-The njs surface already has `ngx.fetch()`. What to ship: a typed Gleam wrapper with request building, response parsing, retry, timeout, and auth header injection as first-class types.
+The njs surface already has `ngx.fetch()`. A module scaffold now exists; what to ship next is a typed Gleam wrapper with request building, response parsing, retry, timeout, and auth header injection as first-class types.
 
 Why first:
 - No native dependency — ships immediately
@@ -89,7 +89,7 @@ Roadmap integration:
 
 #### `session` — session state
 
-**Status:** not started  
+**Status:** scaffold  
 **Lua analog:** `lua-resty-session`  
 **Blockers:** requires native `shared_dict` module
 
@@ -99,7 +99,7 @@ Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC 
 
 #### `mlcache` — two-level LRU + shared dict cache
 
-**Status:** not started  
+**Status:** scaffold  
 **Lua analog:** `lua-resty-mlcache`  
 **Blockers:** requires native `shared_dict` module
 
@@ -107,7 +107,7 @@ njs manages LRU policy per-worker; shared dict is the backing layer. Includes st
 
 #### `response_transform` — body shaping
 
-**Status:** not started  
+**Status:** scaffold  
 **Blockers:** none
 
 Response field masking, conditional JSON mutation, application-specific rewrites. Sits as a body filter after upstream content.
@@ -118,7 +118,7 @@ Why scripted:
 
 #### `webhook` — request signing and callback verification
 
-**Status:** not started  
+**Status:** scaffold  
 **Blockers:** none (HMAC verification delegates to njs Web Crypto)
 
 Outbound request signing (HMAC-SHA256) and inbound callback verification. Lightweight protocol adaptation glue for third-party integrations.
@@ -129,7 +129,7 @@ Why scripted:
 
 #### `metrics` — push-based metrics forwarding
 
-**Status:** not started  
+**Status:** scaffold  
 **Blockers:** none
 
 Log-phase njs script emitting per-request metrics to DogStatsD / StatsD. Complements the native `prometheus` (pull-based) module.

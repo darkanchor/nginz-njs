@@ -1,0 +1,18 @@
+name = "nginz_njs_response_transform"
+version = "0.1.0"
+target = "javascript"
+description = "Response transformation scaffold for nginx: body-shaping plans and reusable transform primitives"
+
+licences = ["Apache-2.0"]
+gleam = ">= 1.14.0"
+
+[dependencies]
+gleam_stdlib = ">= 0.39.0 and < 2.0.0"
+gleam_javascript = ">= 0.11.0 and < 2.0.0"
+ngs = ">= 1.0.8 and < 2.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+
+[javascript]
+runtime = "bun"

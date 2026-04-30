@@ -57,11 +57,37 @@ pub fn require_header(name: String, value: String) -> Rule {
   }
 }
 
+pub fn header_one_of(name: String, allowed: List(String)) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.headers, name) {
+      Ok(v) ->
+        case list.contains(allowed, v) {
+          True -> Allow
+          False -> Deny("header value mismatch: " <> name)
+        }
+      Error(_) -> Deny("missing required header: " <> name)
+    }
+  }
+}
+
 pub fn has_claim(key: String, value: String) -> Rule {
   fn(ctx: Context) -> Decision {
     case dict.get(ctx.claims, key) {
       Ok(v) if v == value -> Allow
       Ok(_) -> Deny("claim value mismatch: " <> key)
+      Error(_) -> Deny("missing required claim: " <> key)
+    }
+  }
+}
+
+pub fn claim_one_of(key: String, allowed: List(String)) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.claims, key) {
+      Ok(v) ->
+        case list.contains(allowed, v) {
+          True -> Allow
+          False -> Deny("claim value mismatch: " <> key)
+        }
       Error(_) -> Deny("missing required claim: " <> key)
     }
   }

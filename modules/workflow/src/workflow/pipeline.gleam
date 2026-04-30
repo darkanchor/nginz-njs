@@ -1,8 +1,9 @@
 import gleam/javascript/promise.{type Promise}
 import gleam/list
+import http_client/client
+import http_client/fetch.{FetchFailed, Response, execute}
 import njs/http.{type HTTPRequest, type HTTPResponse}
 import njs/ngx
-import njs/response
 
 pub type StepResult {
   Fetched(status: Int, body: String)
@@ -31,9 +32,11 @@ pub fn subrequest_step(path: String) -> Step {
 
 pub fn fetch_step(url: String) -> Step {
   fn(_r: HTTPRequest) -> Promise(StepResult) {
-    use resp <- promise.await(ngx.fetch_url(url, ngx.object()))
-    use body <- promise.await(response.text(resp))
-    promise.resolve(Fetched(response.status(resp), body))
+    use result <- promise.await(execute(client.new(url)))
+    case result {
+      Ok(Response(status:, body:)) -> promise.resolve(Fetched(status, body))
+      Error(FetchFailed(reason)) -> promise.resolve(Failed(reason))
+    }
   }
 }
 

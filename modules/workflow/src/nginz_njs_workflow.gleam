@@ -3,7 +3,9 @@ import gleam/list
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
-import workflow/pipeline.{Failed, Fetched, filter_ok, run, subrequest_step}
+import workflow/pipeline.{
+  Failed, Fetched, fetch_step, filter_ok, run, subrequest_step,
+}
 
 fn enrich(r: HTTPRequest) -> Promise(Nil) {
   let steps = [
@@ -47,8 +49,29 @@ fn chain(r: HTTPRequest) -> Promise(Nil) {
   }
 }
 
+fn fetch_chain(r: HTTPRequest) -> Promise(Nil) {
+  let step = fetch_step("http://127.0.0.1:8888/__fixture/upstream")
+  use result <- promise.await(step(r))
+  case result {
+    Fetched(200, body) -> {
+      http.return_text(r, 200, body)
+      promise.resolve(Nil)
+    }
+    Fetched(status, _) -> {
+      http.return_code(r, status)
+      promise.resolve(Nil)
+    }
+    Failed(reason) -> {
+      let _ = http.log(r, "workflow: fetch chain failed — " <> reason)
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+  }
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("enrich", enrich)
   |> ngx.merge("chain", chain)
+  |> ngx.merge("fetch_chain", fetch_chain)
 }

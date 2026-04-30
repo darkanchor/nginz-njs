@@ -8,6 +8,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Gleam bindings to the njs runtime are provided by the [`ngs`](https://hex.pm/packages/ngs) package (local copy at `/home/kaiwu/Documents/cgit/ngs`).
 
+## Core design rule: modules are building blocks
+
+Every module in this repo has two distinct surfaces:
+
+1. **Reusable Gleam library surface** — the `pub` types and functions under `src/<name>/...`
+2. **Final njs surface** — the `pub fn exports() -> JsObject` entrypoint in `src/nginz_njs_<name>.gleam`
+
+The project encourages FP composibility and modularity, a highly reusable component might not have its own `exports()` at all.
+
+Treat the first surface as the primary design target. Modules are meant to be used by other Gleam modules inside/outside this monorepo as long as they expose clean public interfaces. The `exports()` function is the final adapter layer for nginx and is also what integration tests exercise today.
+
+Design implication: do not build modules as isolated handler scripts when the logic should be reusable. Build the reusable Gleam core first, then adapt it through `exports()`. Example: `workflow` should consume `http_client` as a Gleam building block instead of owning a separate fetch abstraction.
+
 ## Commands
 
 ### Unit tests (pure Gleam, no nginx needed)
@@ -63,6 +76,8 @@ modules/<name>/src/*.gleam
 
 `scripts/build.js` drives this for all modules or a named one. It discovers modules by listing `modules/` directories.
 
+Read this pipeline carefully: the Gleam package is built first, and only the final `exports()` entrypoint is bundled into the njs artifact. Keep that separation visible in code structure.
+
 ### Module layout
 
 Every module in `modules/<name>/` is an independent Gleam package. The directory name is the short form (e.g., `authz`); the Gleam package name uses the `nginz_njs_` prefix for Hex.pm uniqueness (e.g., `nginz_njs_authz`).
@@ -72,8 +87,8 @@ modules/<name>/
   gleam.toml              name = "nginz_njs_<name>", target = "javascript"
   nginx.conf              example nginx config
   src/
-    nginz_njs_<name>.gleam   entry point — must export pub fn exports() -> JsObject
-    <name>/                  submodules (namespaced to avoid import path collisions)
+    nginz_njs_<name>.gleam   entry point — final njs adapter; must export pub fn exports() -> JsObject
+    <name>/                  reusable library modules (namespaced to avoid import path collisions)
       *.gleam
   test/
     nginz_njs_<name>_test.gleam  gleeunit entry (must match package name exactly)
@@ -85,6 +100,8 @@ modules/<name>/
 ```
 
 `scripts/build.js` reads the `name` field from `gleam.toml` to locate the compiled entry mjs at `build/dev/javascript/<package_name>/<package_name>.mjs`.
+
+When adding functionality, prefer putting real logic under `src/<name>/...` with clean `pub` interfaces, and keep `src/nginz_njs_<name>.gleam` thin. If another module could plausibly use the logic directly, it belongs in the reusable library surface rather than in the `exports()` adapter.
 
 **Test scenario naming convention:**
 - `tests/basic/` — standard nginx only; runs with `bun run test:int` and `bun run test`
@@ -131,6 +148,8 @@ location / { js_content main.handler_name; }
 ```
 
 `js_path "njs/"` resolves relative to the nginx config file's directory. The harness copies test scenario configs into `dist/<name>/nginx.conf` before starting nginx (so `njs/` resolves to `dist/<name>/njs/` where `app.js` lives). Nginx prefix is `dist/<name>/` — logs land in `dist/<name>/logs/`.
+
+This entry point is the final deployment boundary, not the place where most module logic should live.
 
 ### Integration test harness
 

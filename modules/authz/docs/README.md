@@ -53,6 +53,7 @@ let api_policy = all_of([
 - `jwt_check` depends on `$jwt_claim_role` being populated by the nginz native JWT module. The JWT signature is verified by the native layer, not here.
 - No runtime policy reload. Policy rules are compiled into the njs bundle. Hot-reload requires an nginx restart or reload.
 - Claims are read as single-value strings. Multi-value claims (e.g., comma-separated roles) require custom extraction logic.
+- External decision points should later compose the reusable `http_client` module rather than using raw fetch logic directly inside `authz`.
 
 ## Testing
 
