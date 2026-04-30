@@ -1,7 +1,10 @@
+import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/list
 import http_client/client
-import http_client/fetch.{FetchFailed, Response, execute}
+import http_client/fetch.{
+  FetchFailed, InvalidRequest, InvalidUrl, Response, Timeout, execute,
+}
 import njs/http.{type HTTPRequest, type HTTPResponse}
 import njs/ngx
 
@@ -36,6 +39,10 @@ pub fn fetch_step(url: String) -> Step {
     case result {
       Ok(Response(status:, body:)) -> promise.resolve(Fetched(status, body))
       Error(FetchFailed(reason)) -> promise.resolve(Failed(reason))
+      Error(Timeout(ms)) ->
+        promise.resolve(Failed("timeout after " <> int.to_string(ms) <> "ms"))
+      Error(InvalidUrl(url)) -> promise.resolve(Failed("invalid url: " <> url))
+      Error(InvalidRequest(reason)) -> promise.resolve(Failed(reason))
     }
   }
 }

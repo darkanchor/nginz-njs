@@ -24,7 +24,7 @@ describe("http_client — scaffold demo", () => {
     const res = await fetch(`${TEST_URL}/demo`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(
-      "GET https://example.internal/ping auth=Bearer demo-token timeout_ms=1500",
+      "GET https://example.internal/ping auth=Bearer demo-token timeout_ms=1500 body=none headers=0",
     );
   });
 
@@ -32,5 +32,13 @@ describe("http_client — scaffold demo", () => {
     const res = await fetch(`${TEST_URL}/fetch-demo`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("fixture-response");
+  });
+
+  test("request_demo returns full builder pipeline summary", async () => {
+    const res = await fetch(`${TEST_URL}/request-demo`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(
+      "POST https://api.example.test/users?page=1&limit=20&sort=desc auth=Bearer demo-token timeout_ms=5000 body=some headers=2 qs=3pairs",
+    );
   });
 });
