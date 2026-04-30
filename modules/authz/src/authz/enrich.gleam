@@ -8,7 +8,7 @@ import njs/http.{type HTTPRequest}
 pub fn inject_status(r: HTTPRequest, decision: Decision) -> HTTPRequest {
   let status = case decision {
     Allow -> "allow"
-    Deny(_) -> "deny"
+    Deny(_, _) -> "deny"
   }
   http.set_headers_out(r, "X-Authz-Status", status)
 }

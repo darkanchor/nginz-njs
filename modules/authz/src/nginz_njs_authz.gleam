@@ -28,9 +28,9 @@ fn check(r: HTTPRequest) -> Nil {
   ]
   case policy.evaluate(ctx, rules) {
     Allow -> http.return_code(r, 204)
-    Deny(reason) -> {
+    Deny(status, reason) -> {
       let _ = http.log(r, "authz: denied — " <> reason)
-      http.return_code(r, 403)
+      http.return_code(r, status)
     }
   }
 }
@@ -47,9 +47,9 @@ fn jwt_check(r: HTTPRequest) -> Nil {
   ]
   case policy.evaluate(ctx, rules) {
     Allow -> http.return_code(r, 204)
-    Deny(reason) -> {
+    Deny(status, reason) -> {
       let _ = http.log(r, "authz: jwt denied — " <> reason)
-      http.return_code(r, 403)
+      http.return_code(r, status)
     }
   }
 }
@@ -62,17 +62,7 @@ fn remote_check(r: HTTPRequest) -> Promise(Nil) {
   }
   let ctx = context_from_request(r)
   use decision <- promise.await(remote.opa_allow(ctx, endpoint, 2000))
-  case decision {
-    Allow -> {
-      http.return_code(r, 204)
-      promise.resolve(Nil)
-    }
-    Deny(reason) -> {
-      let _ = http.log(r, "authz: remote denied — " <> reason)
-      http.return_code(r, 403)
-      promise.resolve(Nil)
-    }
-  }
+  apply_decision(r, decision, "authz: remote denied — ")
 }
 
 fn bearer_token(r: HTTPRequest) -> String {
@@ -96,9 +86,9 @@ fn apply_decision(
       http.return_code(r, 204)
       promise.resolve(Nil)
     }
-    Deny(reason) -> {
+    Deny(status, reason) -> {
       let _ = http.log(r, log_prefix <> reason)
-      http.return_code(r, 403)
+      http.return_code(r, status)
       promise.resolve(Nil)
     }
   }
@@ -149,9 +139,9 @@ fn enriched_check(r: HTTPRequest) -> Nil {
   let _ = enrich.inject_status(r, decision)
   case decision {
     Allow -> http.return_code(r, 204)
-    Deny(reason) -> {
+    Deny(status, reason) -> {
       let _ = http.log(r, "authz: denied — " <> reason)
-      http.return_code(r, 403)
+      http.return_code(r, status)
     }
   }
 }
@@ -176,9 +166,9 @@ fn enriched_jwt_check(r: HTTPRequest) -> Nil {
   let _ = enrich.inject_claims(r, ctx)
   case decision {
     Allow -> http.return_code(r, 204)
-    Deny(reason) -> {
+    Deny(status, reason) -> {
       let _ = http.log(r, "authz: jwt denied — " <> reason)
-      http.return_code(r, 403)
+      http.return_code(r, status)
     }
   }
 }
@@ -193,17 +183,7 @@ fn enriched_remote_check(r: HTTPRequest) -> Promise(Nil) {
   let ctx = context_from_request(r)
   use decision <- promise.await(remote.opa_allow(ctx, endpoint, 2000))
   let _ = enrich.inject_status(r, decision)
-  case decision {
-    Allow -> {
-      http.return_code(r, 204)
-      promise.resolve(Nil)
-    }
-    Deny(reason) -> {
-      let _ = http.log(r, "authz: remote denied — " <> reason)
-      http.return_code(r, 403)
-      promise.resolve(Nil)
-    }
-  }
+  apply_decision(r, decision, "authz: remote denied — ")
 }
 
 pub fn exports() -> JsObject {

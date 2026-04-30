@@ -1,4 +1,5 @@
 import authz/policy.{type Decision, Allow, Deny}
+import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/string
 import njs/buffer.{Hex, Utf8, from_string}
@@ -23,11 +24,7 @@ pub fn lookup(dict_name: String, token: String) -> Promise(CacheResult) {
         True ->
           promise.resolve(case shared_dict.get(dict, key) {
             ItemString("allow") -> Hit(Allow)
-            ItemString(s) ->
-              case string.split_once(s, "deny:") {
-                Ok(#("", reason)) -> Hit(Deny(reason))
-                _ -> Miss
-              }
+            ItemString(s) -> decode_deny(s)
             _ -> Miss
           })
       }
@@ -48,11 +45,28 @@ pub fn store(
     Ok(dict) -> {
       let value = case decision {
         Allow -> ItemString("allow")
-        Deny(r) -> ItemString("deny:" <> r)
+        Deny(status, reason) ->
+          ItemString("deny:" <> int.to_string(status) <> ":" <> reason)
       }
       let _ = shared_dict.set(dict, key, value, ttl_s * 1000)
       promise.resolve(Nil)
     }
+  }
+}
+
+fn decode_deny(s: String) -> CacheResult {
+  // format: "deny:<status>:<reason>"
+  case string.split_once(s, "deny:") {
+    Ok(#("", rest)) ->
+      case string.split_once(rest, ":") {
+        Ok(#(status_str, reason)) ->
+          case int.parse(status_str) {
+            Ok(status) -> Hit(Deny(status, reason))
+            Error(_) -> Miss
+          }
+        Error(_) -> Miss
+      }
+    _ -> Miss
   }
 }
 

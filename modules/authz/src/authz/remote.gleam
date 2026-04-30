@@ -24,12 +24,12 @@ pub fn opa_allow(
     |> client.with_timeout(timeout_ms)
   use result <- promise.await(fetch.execute(req))
   promise.resolve(case result {
-    Error(e) -> Deny("remote authz unavailable: " <> error_text(e))
+    Error(e) -> Deny(403, "remote authz unavailable: " <> error_text(e))
     Ok(resp) ->
       case parse_allow(resp.body) {
         Ok(True) -> Allow
-        Ok(False) -> Deny("remote authz: denied")
-        Error(reason) -> Deny(reason)
+        Ok(False) -> Deny(403, "remote authz: denied")
+        Error(reason) -> Deny(403, reason)
       }
   })
 }

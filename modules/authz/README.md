@@ -116,9 +116,12 @@ let api_policy = all_of([
 | `claim_contains_one_of(key, values)` | Allow if comma-separated claim contains any value from the list |
 | `query_param(key, value)` | Allow if query parameter equals value exactly |
 | `query_param_one_of(key, values)` | Allow if query parameter is one of the values |
+| `remote_addr_in(cidrs)` | Allow if remote address falls within any CIDR (`"10.0.0.0/8"` or plain IP) |
 | `all_of(rules)` | Allow only if every rule allows (AND) |
 | `any_of(rules)` | Allow if at least one rule allows (OR) |
 | `not_(rule)` | Invert a rule |
+| `deny_401(reason)` | Pure constructor — `Deny(401, reason)` |
+| `deny_403(reason)` | Pure constructor — `Deny(403, reason)` |
 
 ### Async rules
 
@@ -138,22 +141,25 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 
 | Module | Purpose |
 |---|---|
-| `authz/policy` | Core types (`Context`, `Decision`, `Rule`, `AsyncRule`), all combinators |
+| `authz/policy` | Core types (`Context`, `Decision`, `Rule`, `AsyncRule`), all combinators, `deny_401`/`deny_403` |
 | `authz/claims` | `from_vars(vars, names)` — extracts `$jwt_claim_<name>` nginx vars into claims dict |
 | `authz/query` | `from_vars(vars, names)` — extracts `$arg_<name>` nginx vars into query dict |
 | `authz/remote` | `opa_allow(ctx, endpoint, timeout_ms)` — async OPA-compatible remote check via `http_client` |
 | `authz/cache` | `lookup/store` — `ngx.shared`-backed decision cache keyed by Bearer token SHA-256 |
 | `authz/enrich` | `inject_status/inject_claims` — sets `X-Authz-*` response headers |
+| `authz/subrequest` | `auth_request_step(r, path)` — AsyncRule backed by nginx subrequest |
 
 ## What is implemented
 
 **`authz/policy.gleam`**
 - `Context` — method, path, remote_addr, headers, claims, query
+- `Decision` — `Allow` | `Deny(status: Int, reason: String)`
 - `Rule = fn(Context) -> Decision` and `AsyncRule = fn(Context) -> Promise(Decision)`
 - `evaluate` — short-circuits on first `Deny`
 - `async_evaluate` — async short-circuit evaluation; `to_async` lifts a sync Rule
-- Atomic rules: `method_in`, `path_prefix`, `require_header`, `header_one_of`, `has_claim`, `claim_one_of`, `claim_contains`, `claim_contains_one_of`, `query_param`, `query_param_one_of`
+- Atomic rules: `method_in`, `path_prefix`, `require_header`, `header_one_of`, `has_claim`, `claim_one_of`, `claim_contains`, `claim_contains_one_of`, `query_param`, `query_param_one_of`, `remote_addr_in`
 - Combinators: `all_of`, `any_of`, `not_`
+- Helpers: `deny_401(reason)`, `deny_403(reason)`
 
 **`authz/claims.gleam`** — `from_vars` reads any list of `jwt_claim_*` nginx variables
 
@@ -165,7 +171,9 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 
 **`authz/enrich.gleam`** — `inject_status` and `inject_claims` set `X-Authz-*` response headers
 
-**`nginz_njs_authz.gleam`** (njs entry point) — 7 handler exports covering all combinations
+**`authz/subrequest.gleam`** — `auth_request_step(r, path)` builds an AsyncRule backed by `http.subrequest`; 2xx → Allow, anything else → Deny(403)
+
+**`nginz_njs_authz.gleam`** (njs entry point) — 7 handler exports covering all combinations; handlers forward the HTTP status from `Deny`
 
 **Integration tests**
 - `tests/basic/` — method allowlist, no native deps
@@ -187,25 +195,26 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - [x] `claim_contains(key, value)` and `claim_contains_one_of(key, values)` — multi-value comma-separated claims
 - [x] `query_param(key, value)` and `query_param_one_of(key, values)` — query string rules
 - [x] `Context.query` field populated from `$arg_*` nginx variables via `authz/query.from_vars`
-- [ ] `path_matches(pattern)` — regex/glob path matching (needs regex support)
-- [ ] `remote_addr_in(cidrs)` — IP allowlist/denylist (needs CIDR parsing)
+- [x] `remote_addr_in(cidrs)` — IPv4 allowlist/denylist with CIDR notation (`"10.0.0.0/8"`, `"1.2.3.4"`)
+- [ ] `path_matches(pattern)` — regex/glob path matching (needs JS regex FFI)
 - [ ] focused examples showing nested `all_of` / `any_of` policy trees
 
-### Phase 2 — make decisions richer without losing purity ✓ (partial)
+### Phase 2 — make decisions richer without losing purity ✓
 
 - [x] `X-Authz-Status` and `X-Authz-<Claim>` response headers via `authz/enrich`
 - [x] `apply_decision(r, decision, log_prefix)` nginx adapter in the entry point
-- [ ] evolve `Deny` to carry an HTTP status code (401 vs 403 semantics)
-- [ ] `deny_401`, `deny_403` pure helpers
+- [x] `Deny` carries HTTP status code — `Deny(status: Int, reason: String)`
+- [x] `deny_401(reason)` and `deny_403(reason)` pure constructor helpers
+- [x] nginx handlers use the status from `Deny` (401 vs 403 semantics end-to-end)
 
-### Phase 3 — async policy adapters ✓ (partial)
+### Phase 3 — async policy adapters ✓
 
 - [x] `AsyncRule = fn(Context) -> Promise(Decision)` type alias in `policy.gleam`
 - [x] `async_evaluate(ctx, rules)` — async short-circuit evaluation
 - [x] `to_async(rule)` — lifts a sync `Rule` into an `AsyncRule`
 - [x] `authz/remote.opa_allow` — async OPA-compatible external check via `http_client`
 - [x] integration test coverage for external auth service (`tests/opa/`, `tests/cache/`)
-- [ ] `auth_request_step(path)` subrequest adapter — maps nginx subrequest result into `Decision`
+- [x] `authz/subrequest.auth_request_step(r, path)` — AsyncRule backed by nginx subrequest; 2xx → Allow
 
 ### Phase 4 — compose policy outputs in nginx ✓
 
@@ -221,13 +230,13 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - [x] unit-test combinator nesting and short-circuit behavior
 - [x] unit-test `async_evaluate` / `to_async` with sync rules
 - [x] unit-test `query_param` and `query_param_one_of`
-- [ ] unit-test decision helper semantics when `Deny` carries HTTP status
+- [x] unit-test decision helper semantics when `Deny` carries HTTP status (`deny_401`, `deny_403`, status propagation)
 - [ ] `tests/basic/` scenario for request-to-context extraction correctness
 - [x] native JWT scenario as optional proof of composition with nginz (`tests/jwt/`)
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js authz` — 43 unit tests pass
+- [x] `bun scripts/test.js authz` — 52 unit tests pass
 - [x] `bun test modules/authz/tests/basic/do.test.js` — method allowlist passes
 - [x] `bun test modules/authz/tests/opa/do.test.js` — remote OPA check passes
 - [x] `bun test modules/authz/tests/cache/do.test.js` — shared-dict cache passes
