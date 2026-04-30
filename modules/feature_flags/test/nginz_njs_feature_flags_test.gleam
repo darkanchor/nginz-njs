@@ -1,10 +1,5 @@
 import feature_flags/evaluation.{
-  ByRemoteAddr,
-  ByRequestId,
-  ByUserId,
-  Flag,
-  bucket,
-  is_enabled,
+  ByRemoteAddr, ByRequestId, ByUserId, Flag, bucket, is_enabled,
 }
 import gleeunit
 import gleeunit/should

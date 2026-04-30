@@ -17,8 +17,9 @@ function getModules(filter) {
 
 function testModule(name) {
   console.log(`\ntesting ${name}...`);
+  const cwd = join(MODULES_DIR, name);
   const result = spawnSync(["gleam", "test", "--target", "javascript"], {
-    cwd: join(MODULES_DIR, name),
+    cwd,
     stdout: "inherit",
     stderr: "inherit",
   });

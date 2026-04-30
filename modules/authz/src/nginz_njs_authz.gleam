@@ -34,11 +34,7 @@ fn jwt_check(r: HTTPRequest) -> Nil {
     Error(_) -> ""
   }
   let claims = dict.from_list([#("role", role)])
-  let ctx =
-    Context(
-      ..context_from_request(r),
-      claims: claims,
-    )
+  let ctx = Context(..context_from_request(r), claims: claims)
   let rules = [
     policy.any_of([
       policy.has_claim("role", "admin"),

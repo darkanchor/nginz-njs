@@ -19,7 +19,9 @@
       "Bash(git *)",
       "Bash(/home/kaiwu/Documents/gitea/nginz-njs/submodules/nginx/objs/nginx -V)",
       "Bash(make *)",
-      "Bash(NGINX_BIN=/usr/bin/nginx bun scripts/build.js authz)"
+      "Bash(NGINX_BIN=/usr/bin/nginx bun scripts/build.js authz)",
+      "Bash(xargs ls *)",
+      "Bash(chmod +x /home/kaiwu/Documents/gitea/nginz-njs/.githooks/pre-push)"
     ]
   }
 }

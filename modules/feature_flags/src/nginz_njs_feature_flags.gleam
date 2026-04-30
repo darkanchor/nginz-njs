@@ -1,11 +1,5 @@
 import feature_flags/evaluation.{
-  type Flag,
-  ByRemoteAddr,
-  ByRequestId,
-  ByUserId,
-  Flag,
-  bucket,
-  is_enabled,
+  type Flag, ByRemoteAddr, ByRequestId, ByUserId, Flag, bucket, is_enabled,
 }
 import gleam/int
 import gleam/result

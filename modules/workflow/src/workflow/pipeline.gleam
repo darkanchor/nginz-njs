@@ -20,9 +20,11 @@ pub fn run(r: HTTPRequest, steps: List(Step)) -> Promise(List(StepResult)) {
 
 pub fn subrequest_step(path: String) -> Step {
   fn(r: HTTPRequest) -> Promise(StepResult) {
-    use resp: HTTPResponse <- promise.await(
-      http.subrequest(r, path, ngx.object()),
-    )
+    use resp: HTTPResponse <- promise.await(http.subrequest(
+      r,
+      path,
+      ngx.object(),
+    ))
     promise.resolve(Fetched(http.status(resp), http.response_text(resp)))
   }
 }

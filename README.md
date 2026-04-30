@@ -143,7 +143,15 @@ The resulting binary is at `submodules/nginx/objs/nginx`. The `Makefile` symlink
 
 **This step is a prerequisite for native-module integration tests** (`bun run test:native`). Basic integration tests (`bun run test:int`) and unit tests (`bun run test:unit`) work without it.
 
-### 3. Tool requirements
+### 3. Activate git hooks
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This installs a pre-push hook that runs `gleam format` across all modules before every push, keeping CI's format check green.
+
+### 4. Tool requirements
 
 - [Gleam](https://gleam.run) >= 1.14.0
 - [Bun](https://bun.sh) >= 1.1.0

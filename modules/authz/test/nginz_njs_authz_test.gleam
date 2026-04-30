@@ -1,16 +1,6 @@
 import authz/policy.{
-  type Context,
-  Allow,
-  Context,
-  Deny,
-  all_of,
-  any_of,
-  evaluate,
-  has_claim,
-  method_in,
-  not_,
-  path_prefix,
-  require_header,
+  type Context, Allow, Context, Deny, all_of, any_of, evaluate, has_claim,
+  method_in, not_, path_prefix, require_header,
 }
 import gleam/dict
 import gleeunit

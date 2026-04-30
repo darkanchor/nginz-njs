@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "format":       "bun scripts/format.js",
     "build":        "bun scripts/build.js",
     "build:module": "bun scripts/build.js",
     "test:unit":    "bun scripts/test.js",
