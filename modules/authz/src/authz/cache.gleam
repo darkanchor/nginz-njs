@@ -2,9 +2,11 @@ import authz/policy.{type Decision, Allow, Deny}
 import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/string
+import mlcache/lookup as mc_lookup
+import mlcache/model as mc_model
+import mlcache/shared as mc_shared
 import njs/buffer.{Hex, Utf8, from_string}
 import njs/crypto
-import njs/shared_dict.{ItemString}
 
 pub type CacheResult {
   Hit(decision: Decision)
@@ -16,19 +18,11 @@ pub type CacheResult {
 /// stored value is unrecognised.
 pub fn lookup(dict_name: String, token: String) -> Promise(CacheResult) {
   use key <- promise.await(cache_key(token))
-  case shared_dict.get_shared_dict(dict_name) {
-    Error(_) -> promise.resolve(Miss)
-    Ok(dict) ->
-      case shared_dict.has(dict, key) {
-        False -> promise.resolve(Miss)
-        True ->
-          promise.resolve(case shared_dict.get(dict, key) {
-            ItemString("allow") -> Hit(Allow)
-            ItemString(s) -> decode_deny(s)
-            _ -> Miss
-          })
-      }
-  }
+  let result = mc_shared.get(dict_name, key, 0) |> mc_lookup.get_value
+  promise.resolve(case result {
+    Ok(s) -> decode_value(s)
+    Error(_) -> Miss
+  })
 }
 
 /// Store a decision in the named shared dict with a TTL in seconds.
@@ -40,22 +34,32 @@ pub fn store(
   ttl_s: Int,
 ) -> Promise(Nil) {
   use key <- promise.await(cache_key(token))
-  case shared_dict.get_shared_dict(dict_name) {
-    Error(_) -> promise.resolve(Nil)
-    Ok(dict) -> {
-      let value = case decision {
-        Allow -> ItemString("allow")
-        Deny(status, reason) ->
-          ItemString("deny:" <> int.to_string(status) <> ":" <> reason)
-      }
-      let _ = shared_dict.set(dict, key, value, ttl_s * 1000)
-      promise.resolve(Nil)
-    }
+  let config =
+    mc_model.CacheConfig(
+      backend: mc_model.SharedDict,
+      refresh_policy: mc_model.RefreshOnMiss,
+      ttl_seconds: ttl_s,
+      stale_ttl_seconds: 0,
+    )
+  mc_shared.put(dict_name, key, encode_decision(decision), config)
+  promise.resolve(Nil)
+}
+
+fn encode_decision(decision: Decision) -> String {
+  case decision {
+    Allow -> "allow"
+    Deny(status, reason) -> "deny:" <> int.to_string(status) <> ":" <> reason
+  }
+}
+
+fn decode_value(s: String) -> CacheResult {
+  case s {
+    "allow" -> Hit(Allow)
+    _ -> decode_deny(s)
   }
 }
 
 fn decode_deny(s: String) -> CacheResult {
-  // format: "deny:<status>:<reason>"
   case string.split_once(s, "deny:") {
     Ok(#("", rest)) ->
       case string.split_once(rest, ":") {

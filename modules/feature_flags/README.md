@@ -20,9 +20,14 @@ Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure has
 - `evaluate(flag, key, override)` — full evaluation with override precedence
 - Pure config parsing: `parse_enabled`, `parse_rollout_pct`, `parse_override`
 
+**`feature_flags/state.gleam`**
+- `load(dict_name, flag_name)` — reads flag config from ngx.shared; `Error(Nil)` on Miss
+- `save(dict_name, flag, ttl_s)` — persists flag config to ngx.shared via `mlcache/shared`
+
 **`nginz_njs_feature_flags.gleam`** (njs entry point)
-- `evaluate` — `js_content` handler for override-aware flag evaluation
-- `evaluate_js_set` — `js_set`-compatible handler for routing decisions (use with `js_set $var main.evaluate_js_set` after sourcing the required `ff_*` variables before nginx evaluates the variable)
+- `evaluate` — `js_content` handler; checks shared dict first, falls back to nginx vars
+- `evaluate_js_set` — `js_set`-compatible handler for routing decisions
+- `set_flag` — persists flag config to the shared dict from query params (`?name=&enabled=&pct=`)
 - `bucket` — returns the raw bucket number for the resolved key; useful for debugging
 - `variant`, `describe`, `describe_variant` — variant selection and observability-friendly decision outputs
 
@@ -111,13 +116,15 @@ Goal: make flag decisions easy to inspect and reuse across the nginx config.
 - [x] expose routing-friendly outputs via `variant` and `describe` handlers
 - [x] document patterns where flag output feeds `workflow` or `authz` decisions
 
-### Phase 5 — optional runtime state backends
+### Phase 5 — optional runtime state backends ✓
 
-Goal: improve operability later without disturbing the pure evaluator.
+Goal: improve operability without disturbing the pure evaluator.
 
-- [ ] optionally support startup-loaded file config once the variable-driven baseline is solid
-- [ ] later support shared-state-backed config and sticky overrides when the native primitives are ready
-- [ ] keep all backend choice behind the same pure evaluation API
+- [x] `feature_flags/state.gleam` — `load`/`save` flag config via `mlcache/shared` (ngx.shared-backed)
+- [x] `set_flag` handler — persists flag settings from query params to the shared dict at runtime
+- [x] `evaluate` falls back to nginx variables when no dict entry exists — zero config change for existing deployments
+- [ ] startup-loaded file config
+- [ ] variant flag state in shared dict
 
 ## TDD plan
 
@@ -142,6 +149,7 @@ Goal: improve operability later without disturbing the pure evaluator.
 
 - [x] `bun scripts/test.js feature_flags` — 37 unit tests pass
 - [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 15 integration tests pass
+- [x] `bun test modules/feature_flags/tests/state/do.test.js` — dict-backed state 5 tests pass
 - [x] Manual: set `rollout_pct=50`, send 1000 requests with random user ids, verify ~50% get `"1"`
 - [x] Manual: set `rollout_pct=0`, verify all requests get `"0"` regardless of key
 - [x] Manual: set `rollout_pct=100`, verify all requests get `"1"` regardless of key

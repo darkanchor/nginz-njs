@@ -167,7 +167,7 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 
 **`authz/remote.gleam`** — `opa_allow` POSTs context to an OPA-compatible endpoint via `http_client`
 
-**`authz/cache.gleam`** — `lookup`/`store` backed by `ngx.shared` with per-key TTL, keyed by SHA-256 of the Bearer token
+**`authz/cache.gleam`** — `lookup`/`store` backed by `mlcache/shared` with per-key TTL, keyed by SHA-256 of the Bearer token
 
 **`authz/enrich.gleam`** — `inject_status` and `inject_claims` set `X-Authz-*` response headers
 

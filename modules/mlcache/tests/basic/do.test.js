@@ -23,6 +23,6 @@ describe("mlcache — scaffold demo", () => {
   test("describe returns stable cache summary", async () => {
     const res = await fetch(`${TEST_URL}/describe`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("shared_dict policy=refresh_on_miss ttl=60");
+    expect(await res.text()).toBe("shared_dict policy=refresh_on_miss ttl=60 stale=0");
   });
 });

@@ -1,4 +1,5 @@
 import gleam/int
+import gleam/result
 
 pub type Backend {
   SharedDict
@@ -11,7 +12,12 @@ pub type RefreshPolicy {
 }
 
 pub type CacheConfig {
-  CacheConfig(backend: Backend, refresh_policy: RefreshPolicy, ttl_seconds: Int)
+  CacheConfig(
+    backend: Backend,
+    refresh_policy: RefreshPolicy,
+    ttl_seconds: Int,
+    stale_ttl_seconds: Int,
+  )
 }
 
 pub type LookupResult {
@@ -20,12 +26,38 @@ pub type LookupResult {
   Stale(value: String)
 }
 
+pub type ConfigError {
+  TtlNotPositive
+  StaleTtlNegative
+  StaleWithNoWindow
+}
+
 pub fn default_config() -> CacheConfig {
   CacheConfig(
     backend: SharedDict,
     refresh_policy: RefreshOnMiss,
     ttl_seconds: 60,
+    stale_ttl_seconds: 0,
   )
+}
+
+pub fn validate(config: CacheConfig) -> Result(CacheConfig, ConfigError) {
+  use _ <- result.try(case config.ttl_seconds > 0 {
+    True -> Ok(Nil)
+    False -> Error(TtlNotPositive)
+  })
+  use _ <- result.try(case config.stale_ttl_seconds >= 0 {
+    True -> Ok(Nil)
+    False -> Error(StaleTtlNegative)
+  })
+  case config.refresh_policy {
+    RefreshStale ->
+      case config.stale_ttl_seconds > 0 {
+        True -> Ok(config)
+        False -> Error(StaleWithNoWindow)
+      }
+    RefreshOnMiss -> Ok(config)
+  }
 }
 
 fn backend_text(backend: Backend) -> String {
@@ -48,4 +80,6 @@ pub fn summary(config: CacheConfig) -> String {
   <> refresh_policy_text(config.refresh_policy)
   <> " ttl="
   <> int.to_string(config.ttl_seconds)
+  <> " stale="
+  <> int.to_string(config.stale_ttl_seconds)
 }
