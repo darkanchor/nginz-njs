@@ -1,6 +1,6 @@
 # mlcache
 
-Two-level cache scaffold. Proves the package shape, reusable cache semantics model, and nginx integration surface. Uses the njs built-in `ngx.shared` for cross-request backing.
+Two-level cache scaffold. Proves the package shape, reusable cache semantics model, and nginx integration surface. Targets the njs built-in `ngx.shared` for future cross-request backing.
 
 ## Exports
 

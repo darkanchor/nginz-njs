@@ -131,12 +131,12 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 
 | Module | Purpose | Status |
 |---|---|---|
-| [`nginz_njs_http_client`](modules/http_client/) | Typed request-building scaffold for a future `ngx.fetch()` wrapper | scaffold |
+| [`nginz_njs_http_client`](modules/http_client/) | Typed `ngx.fetch()` wrapper with substantial Phase 1–5 foundations in place | complete |
 | [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
 | [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
 | [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
-| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling backed by njs built-in `ngx.shared` | scaffold |
-| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics backed by njs built-in `ngx.shared` | scaffold |
+| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling targeting njs built-in `ngx.shared` backing | scaffold |
+| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics targeting njs built-in `ngx.shared` backing | scaffold |
 | [`nginz_njs_response_transform`](modules/response_transform/) | Response/body-shaping scaffold for reusable transform plans | scaffold |
 | [`nginz_njs_webhook`](modules/webhook/) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
 | [`nginz_njs_metrics`](modules/metrics/) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
@@ -390,7 +390,7 @@ Scripted modules in this repo orchestrate and compose the native primitives:
 - `nginz_njs_http_client` is the typed scripted wrapper layer over built-in `ngx.fetch()`
 - `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
 - `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
-- `nginz_njs_feature_flags` will use njs built-in `ngx.shared` for runtime-togglable flag state
+- `nginz_njs_feature_flags` can later use njs built-in `ngx.shared` for runtime-togglable flag state
 
 See [ROADMAP.md](ROADMAP.md) for the scripted module roadmap.
 

@@ -1,10 +1,10 @@
 # nginz_njs_session
 
-Session-state scaffold for nginx written in Gleam. The long-term goal is a reusable session library with cookie and lifecycle modeling in Gleam and a runtime backing layer backed by the njs built-in `ngx.shared` dict.
+Session-state scaffold for nginx written in Gleam. The long-term goal is a reusable session library with cookie and lifecycle modeling in Gleam and a runtime backing layer that targets the njs built-in `ngx.shared` dict.
 
 ## Roadmap position
 
-`session` is a Tier-2 module in `ROADMAP.md`. It uses the njs built-in `ngx.shared` for server-side storage — no native nginz dependency required.
+`session` is a Tier-2 module in `ROADMAP.md`. The intended server-side storage target is the njs built-in `ngx.shared` — no native nginz dependency is required, but the real adapter is not wired yet.
 
 ## Design goals
 
@@ -45,11 +45,11 @@ The architectural rule for this module is: session lifecycle and policy belong i
 - session descriptor modeling
 - cookie/session lifecycle policy
 - pure encode/decode and validation helpers
-- njs built-in `ngx.shared` for server-side storage
+- session descriptors intended for a future `ngx.shared`-backed runtime adapter
 
 ### Optional native integration
 
-- none required; njs built-in `ngx.shared` provides shared-memory state out of the box
+- none required for the primitive; the actual `ngx.shared` adapter remains future work
 
 ## Phased implementation plan
 

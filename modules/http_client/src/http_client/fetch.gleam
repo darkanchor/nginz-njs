@@ -21,6 +21,9 @@ pub type ClientError {
   InvalidRequest(reason: String)
 }
 
+/// `execute()` currently emits `FetchFailed` for runtime fetch failures.
+/// The other variants are part of the public error model and are intended for
+/// future validation and policy layers layered on top of raw execution.
 fn build_headers(req: client.Request) -> headers.Headers {
   let base = req.headers
   let with_auth = case req.auth_header {

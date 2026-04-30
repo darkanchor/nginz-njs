@@ -4,7 +4,7 @@ Two-level cache scaffold for nginx written in Gleam. The long-term goal is a reu
 
 ## Roadmap position
 
-`mlcache` is a Tier-2 module in `ROADMAP.md`. It uses the njs built-in `ngx.shared` for cross-request backing — no native nginz dependency required.
+`mlcache` is a Tier-2 module in `ROADMAP.md`. The intended cross-request backing target is the njs built-in `ngx.shared` — no native nginz dependency is required, but the real adapter is not wired yet.
 
 ## Design goals
 
@@ -46,11 +46,11 @@ The architectural rule for this module is: `mlcache` should expose reusable cach
 - cache config and refresh semantics
 - fetch-on-miss modeling
 - reusable cache-policy helpers
-- njs built-in `ngx.shared` for cross-request backing
+- cache semantics intended for a future `ngx.shared`-backed adapter
 
 ### Optional native integration
 
-- none required; njs built-in `ngx.shared` provides shared state out of the box
+- none required for the primitive; the actual `ngx.shared` adapter remains future work
 
 ## Phased implementation plan
 

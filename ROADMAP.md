@@ -31,11 +31,11 @@ When both columns apply: build a native primitive and expose it through njs. Tha
 
 #### `http_client` — `ngx.fetch()` wrapper
 
-**Status:** complete  
+**Status:** complete (with later refinements still open)  
 **Lua analog:** `lua-resty-http`  
 **Blockers:** none
 
-The njs surface already has `ngx.fetch()`. The module provides a typed Gleam wrapper with request building, response parsing, retry policy, timeout enforcement, composable middleware, and auth header injection as first-class types.
+The njs surface already has `ngx.fetch()`. The module now provides a substantial typed Gleam wrapper with request building, response parsing helpers, immediate retry policy, middleware composition, and auth header injection as first-class types. Richer timeout/error normalization and later refinements still remain open work.
 
 Why first:
 - No native dependency — ships immediately
@@ -61,10 +61,10 @@ Roadmap integration:
 **Lua analog:** various custom solutions backed by `lua-resty-mlcache`  
 **Blockers:** none
 
-Flag evaluation with FNV-1a stable bucketing. Reads flag state from nginx variables or the built-in `ngx.shared` dict for runtime-togglable flags without config reload.
+Flag evaluation with FNV-1a stable bucketing. Today it reads flag state from nginx variables; later it can use the built-in `ngx.shared` dict for runtime-togglable flags without config reload.
 
 Roadmap integration:
-- Flags can be toggled at runtime via the njs built-in `ngx.shared`
+- Flags can later be toggled at runtime via the njs built-in `ngx.shared`
 - Bucketing logic stays scripted; state storage uses the njs shared dict
 
 #### `nginz_njs_authz` — policy / authorization engine
@@ -90,17 +90,17 @@ Roadmap integration:
 
 **Status:** scaffold  
 **Lua analog:** `lua-resty-session`  
-**Blockers:** none (njs built-in `ngx.shared`)
+**Blockers:** none for the primitive; the real `ngx.shared` adapter is still to be implemented
 
-Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC via njs Web Crypto; njs built-in shared dict for server-side store. The scripted layer handles token format and lifecycle policy.
+Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC via njs Web Crypto; the intended runtime backing is the njs built-in shared dict. The scripted layer handles token format and lifecycle policy, while the actual `ngx.shared` store adapter remains future work.
 
 #### `mlcache` — two-level LRU + shared dict cache
 
 **Status:** scaffold  
 **Lua analog:** `lua-resty-mlcache`  
-**Blockers:** none (njs built-in `ngx.shared`)
+**Blockers:** none for the primitive; the real `ngx.shared` adapter is still to be implemented
 
-njs manages LRU policy per-worker; njs built-in shared dict is the backing layer. Includes stampede-collapse lock. High leverage for caching fetch results, session data, and flag state.
+njs manages LRU policy per-worker; the intended runtime backing is the njs built-in shared dict. Stampede-collapse and a real shared-dict-backed adapter remain future work. High leverage for caching fetch results, session data, and flag state.
 
 #### `response_transform` — body shaping
 
@@ -167,9 +167,9 @@ Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock pro
 
 ### Sprint 2 — state (njs built-in shared dict)
 
-4. `session` — cookie + AES/HMAC + njs `ngx.shared` backing
-5. `mlcache` — per-worker LRU + njs `ngx.shared`; unlocks high-performance scripted caching
-6. `nginz_njs_feature_flags` — wire flag state to njs `ngx.shared` for runtime toggling without reload
+4. `session` — cookie + AES/HMAC + a real `ngx.shared` store adapter
+5. `mlcache` — per-worker LRU + a real `ngx.shared` adapter; unlocks high-performance scripted caching
+6. `nginz_njs_feature_flags` — wire flag state to `ngx.shared` for runtime toggling without reload
 
 ### Sprint 3 — policy and enrichment
 

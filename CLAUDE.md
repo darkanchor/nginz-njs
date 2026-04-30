@@ -181,6 +181,6 @@ Follow the nginz ROADMAP (`../nginz/ROADMAP.md`) and `../nginz/docs/design-nativ
 2. `workflow` — subrequest orchestration (scaffolded)
 3. `feature_flags` — stable bucketing (scaffolded)
 4. `authz` — FP design reference; JWT claims need the native `jwt` module in the binary
-5. `session` — uses njs built-in `ngx.shared`
+5. `session` — targets njs built-in `ngx.shared` for runtime backing
 
 The `Makefile` builds native modules from `submodules/nginz/` using `zig build package`. Default: `echoz jwt`. Override with `make NGINZ_MODULES="echoz jwt requestid"`.

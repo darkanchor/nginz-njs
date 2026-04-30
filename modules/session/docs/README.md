@@ -1,6 +1,6 @@
 # session
 
-Session-state scaffold. Proves the package shape, reusable session descriptor model, and nginx integration surface. Uses the njs built-in `ngx.shared` for server-side storage.
+Session-state scaffold. Proves the package shape, reusable session descriptor model, and nginx integration surface. Targets the njs built-in `ngx.shared` for future server-side storage.
 
 ## Exports
 

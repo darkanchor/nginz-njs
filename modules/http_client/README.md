@@ -13,7 +13,7 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 - keep nginx effects at the edge and core request shaping in Gleam
 - the pure `Request` model is the stable input to all execution helpers
 
-## What is implemented (Phases 1–5 complete)
+## What is implemented (substantial Phase 1–5 foundations)
 
 **`http_client/client.gleam`** — pure request model
 - `Method` — 7 HTTP methods as a sum type (Get, Head, Post, Put, Patch, Delete, Options)
@@ -24,7 +24,7 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 **`http_client/fetch.gleam`** — execution layer
 - `Response(status: Int, body: String)` — typed HTTP response
 - `ClientError` — `FetchFailed`, `Timeout`, `InvalidUrl`, `InvalidRequest`
-- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)` with timeout enforcement
+- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)`; today it emits `FetchFailed`, while richer variants are reserved for later policy/validation layers
 - Response helpers: `is_success`, `is_client_error`, `is_server_error`, `is_redirect`, `status_text`
 
 **`http_client/policy.gleam`** — retry composition
@@ -55,14 +55,14 @@ The architectural rule for this module: request construction and response interp
 
 ## Scripted core vs optional native integration
 
-### Scripted core (all implemented)
+### Scripted core (implemented today)
 
 - request construction, headers, body, query params
 - auth/header shaping
 - response classification
 - builder pipeline pattern
 
-### Future (Phase 4–5)
+### Future refinement areas
 
 - retry policy wrappers (`NoRetry`, `ConstantBackoff`, `ExponentialBackoff`)
 - timeout enforcement
@@ -92,14 +92,14 @@ The architectural rule for this module: request construction and response interp
 - [x] keep parsing/classification separate from request execution
 - [x] workflow module consumes all error variants
 
-### Phase 4 — add policy wrappers around execution ✅
+### Phase 4 — add policy wrappers around execution (partially in place)
 
 - [x] add typed retry policy values (`RetryPolicy`, `Policy`)
-- [x] add timeout enforcement via `ngx.fetch()` options
+- [x] pass timeout hints through `ngx.fetch()` options
 - [x] add composable middleware for auth/header injection
 - [x] immediate retry with `execute_with_policy` (backoff delay blocked by njs timer context)
 
-### Phase 5 — prepare for ecosystem reuse ✅
+### Phase 5 — prepare for ecosystem reuse (partially in place)
 
 - [x] document patterns for use from `workflow`, `authz`, `webhook`, and future modules
 - [x] add middleware-style composition (`Middleware`, `stack`)
