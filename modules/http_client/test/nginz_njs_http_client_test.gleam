@@ -5,6 +5,11 @@ import http_client/client.{
   summary, with_bearer_token, with_body, with_header, with_headers, with_method,
   with_query_param, with_query_params, with_timeout,
 }
+import http_client/fetch.{Response, is_client_error, is_redirect,
+  is_server_error, is_success, status_text}
+import http_client/middleware
+import http_client/policy.{NoRetry, Retry, with_retry}
+import http_client/response.{body_if_status, body_if_success, body_or}
 
 pub fn main() {
   gleeunit.main()
@@ -196,4 +201,182 @@ pub fn builder_immutability_test() {
   |> should.equal(
     "GET https://api.example.test auth=none timeout_ms=none body=none headers=0",
   )
+}
+
+// --- Response helpers ---
+
+pub fn is_success_2xx_test() {
+  is_success(Response(status: 200, body: "ok"))
+  |> should.equal(True)
+  is_success(Response(status: 201, body: "created"))
+  |> should.equal(True)
+  is_success(Response(status: 299, body: ""))
+  |> should.equal(True)
+  is_success(Response(status: 300, body: ""))
+  |> should.equal(False)
+  is_success(Response(status: 400, body: ""))
+  |> should.equal(False)
+  is_success(Response(status: 500, body: ""))
+  |> should.equal(False)
+}
+
+pub fn is_client_error_4xx_test() {
+  is_client_error(Response(status: 400, body: ""))
+  |> should.equal(True)
+  is_client_error(Response(status: 404, body: ""))
+  |> should.equal(True)
+  is_client_error(Response(status: 499, body: ""))
+  |> should.equal(True)
+  is_client_error(Response(status: 200, body: ""))
+  |> should.equal(False)
+  is_client_error(Response(status: 500, body: ""))
+  |> should.equal(False)
+}
+
+pub fn is_server_error_5xx_test() {
+  is_server_error(Response(status: 500, body: ""))
+  |> should.equal(True)
+  is_server_error(Response(status: 503, body: ""))
+  |> should.equal(True)
+  is_server_error(Response(status: 599, body: ""))
+  |> should.equal(True)
+  is_server_error(Response(status: 200, body: ""))
+  |> should.equal(False)
+  is_server_error(Response(status: 404, body: ""))
+  |> should.equal(False)
+}
+
+pub fn is_redirect_3xx_test() {
+  is_redirect(Response(status: 301, body: ""))
+  |> should.equal(True)
+  is_redirect(Response(status: 302, body: ""))
+  |> should.equal(True)
+  is_redirect(Response(status: 304, body: ""))
+  |> should.equal(True)
+  is_redirect(Response(status: 200, body: ""))
+  |> should.equal(False)
+  is_redirect(Response(status: 400, body: ""))
+  |> should.equal(False)
+}
+
+pub fn status_text_known_codes_test() {
+  status_text(Response(status: 200, body: ""))
+  |> should.equal("OK")
+  status_text(Response(status: 404, body: ""))
+  |> should.equal("Not Found")
+  status_text(Response(status: 500, body: ""))
+  |> should.equal("Internal Server Error")
+  status_text(Response(status: 999, body: ""))
+  |> should.equal("")
+}
+
+// --- Response body helpers ---
+
+pub fn body_or_success_test() {
+  body_or(Response(status: 200, body: "hello"), "fallback")
+  |> should.equal("hello")
+}
+
+pub fn body_or_error_test() {
+  body_or(Response(status: 500, body: "error body"), "fallback")
+  |> should.equal("fallback")
+}
+
+pub fn body_if_success_ok_test() {
+  body_if_success(Response(status: 200, body: "hello"))
+  |> should.equal(Ok("hello"))
+}
+
+pub fn body_if_success_error_test() {
+  body_if_success(Response(status: 404, body: "not found"))
+  |> should.equal(Error("not found"))
+}
+
+pub fn body_if_status_match_test() {
+  body_if_status(Response(status: 201, body: "created"), 201)
+  |> should.equal(Ok("created"))
+}
+
+pub fn body_if_status_mismatch_test() {
+  body_if_status(Response(status: 200, body: "ok"), 201)
+  |> should.equal(Error("ok"))
+}
+
+// --- Policy ---
+
+pub fn policy_default_no_retry_test() {
+  let p = policy.new()
+  case p {
+    policy.Policy(retry: NoRetry) -> Nil
+    _ -> should.fail()
+  }
+}
+
+pub fn policy_with_retry_test() {
+  let p = policy.new() |> with_retry(Retry(max_attempts: 5))
+  case p {
+    policy.Policy(retry: Retry(max_attempts: 5)) -> Nil
+    _ -> should.fail()
+  }
+}
+
+// --- Middleware ---
+
+pub fn middleware_apply_single_test() {
+  let req = new("https://api.example.test")
+  let mw = middleware.bearer_token("mw-token")
+  let result = middleware.apply(req, mw)
+  result
+  |> summary
+  |> should.equal(
+    "GET https://api.example.test auth=Bearer mw-token timeout_ms=none body=none headers=0",
+  )
+}
+
+pub fn middleware_stack_composes_left_to_right_test() {
+  let mw = middleware.stack([
+    middleware.bearer_token("tok"),
+    middleware.add_header("X-A", "1"),
+    middleware.add_header("X-B", "2"),
+    middleware.timeout_ms(999),
+  ])
+  let req = new("https://api.example.test")
+  let result = middleware.apply(req, mw)
+  result
+  |> summary
+  |> should.equal(
+    "GET https://api.example.test auth=Bearer tok timeout_ms=999 body=none headers=2",
+  )
+}
+
+pub fn middleware_json_content_type_test() {
+  let mw = middleware.json_content_type()
+  let req = new("https://api.example.test")
+  let result = middleware.apply(req, mw)
+  result
+  |> summary
+  |> should.equal(
+    "GET https://api.example.test auth=none timeout_ms=none body=none headers=1",
+  )
+}
+
+pub fn middleware_pipeline_idiom_test() {
+  // The builder |> pattern and middleware stack produce the same result
+  let via_builder =
+    new("https://api.example.test")
+    |> with_bearer_token("t")
+    |> with_header("X-Foo", "bar")
+    |> with_timeout(1500)
+    |> summary
+
+  let via_middleware =
+    new("https://api.example.test")
+    |> middleware.apply(middleware.stack([
+      middleware.bearer_token("t"),
+      middleware.add_header("X-Foo", "bar"),
+      middleware.timeout_ms(1500),
+    ]))
+    |> summary
+
+  via_builder |> should.equal(via_middleware)
 }

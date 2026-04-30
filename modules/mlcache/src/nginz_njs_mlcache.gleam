@@ -8,12 +8,7 @@ fn describe(r: HTTPRequest) -> Nil {
   |> http.return_text(r, 200, _)
 }
 
-fn blocked(r: HTTPRequest) -> Nil {
-  http.return_text(r, 501, model.blocked_message())
-}
-
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("describe", describe)
-  |> ngx.merge("blocked", blocked)
 }

@@ -12,9 +12,3 @@ pub fn default_descriptor_summary_test() {
   |> should.equal("sid backend=shared_dict ttl=3600 same_site=Lax")
 }
 
-pub fn blocked_message_test() {
-  model.blocked_message()
-  |> should.equal(
-    "session runtime blocked until native shared_dict backing is available",
-  )
-}

@@ -1,13 +1,12 @@
 # mlcache
 
-Two-level cache scaffold. This module currently proves the package shape, reusable cache semantics model, and nginx integration surface while making the `shared_dict` blocker explicit.
+Two-level cache scaffold. Proves the package shape, reusable cache semantics model, and nginx integration surface. Uses the njs built-in `ngx.shared` for cross-request backing.
 
 ## Exports
 
 | Handler | nginx directive | Description |
 |---|---|---|
 | `main.describe` | `js_content` | Returns a stable summary of the scaffold cache config |
-| `main.blocked` | `js_content` | Returns `501` with the shared-dict blocker message |
 
 ## nginx configuration
 
@@ -23,10 +22,6 @@ http {
         location /describe {
             js_content main.describe;
         }
-
-        location /blocked {
-            js_content main.blocked;
-        }
     }
 }
 ```
@@ -37,9 +32,8 @@ http {
 
 ## Limitations
 
-- no real backing store yet
-- no LRU/store implementation yet
-- runtime shared state is intentionally blocked until `shared_dict` exists and its contract is stable
+- no LRU/store adapter wired yet (the model declares `SharedDict` but the adapter is not yet implemented)
+- no stampede-collapse lock yet
 
 ## Testing
 

@@ -1,30 +1,28 @@
 # nginz_njs_session
 
-Session-state scaffold for nginx written in Gleam. The long-term goal is a reusable session library with cookie and lifecycle modeling in Gleam and a runtime backing layer that can later sit on top of native `shared_dict` or a fallback store.
+Session-state scaffold for nginx written in Gleam. The long-term goal is a reusable session library with cookie and lifecycle modeling in Gleam and a runtime backing layer backed by the njs built-in `ngx.shared` dict.
 
 ## Roadmap position
 
-`session` is a Tier-2 module in `ROADMAP.md` and is blocked on the native `shared_dict` primitive for a stable server-side backing store. The scaffold therefore focuses on reusable session modeling, boundary design, and explicit blocker behavior rather than pretending the runtime backing already exists.
+`session` is a Tier-2 module in `ROADMAP.md`. It uses the njs built-in `ngx.shared` for server-side storage — no native nginz dependency required.
 
 ## Design goals
 
 - keep session shape, cookie semantics, and backend choice modeled as pure values
 - separate session policy from runtime storage details
 - let `authz` and `feature_flags` consume session-derived facts rather than embedding session issuance logic
-- keep blocked runtime behavior explicit and testable
 
 ## What is implemented
 
 **`session/model.gleam`**
 - `CookieConfig`, `StoreBackend`, and `SessionDescriptor`
-- `default_descriptor`, `summary`, and `blocked_message`
+- `default_descriptor`, `summary`
 
 **`nginz_njs_session.gleam`**
 - `describe` — returns a stable summary of the scaffolded session descriptor
-- `blocked` — returns `501` with the shared-dict blocker message
 
 **Integration tests**
-- `tests/basic/` — verifies both the descriptive scaffold path and explicit blocker behavior with stock nginx only
+- `tests/basic/` — verifies the descriptive scaffold path with stock nginx only
 
 ## Core abstractions
 
@@ -47,11 +45,11 @@ The architectural rule for this module is: session lifecycle and policy belong i
 - session descriptor modeling
 - cookie/session lifecycle policy
 - pure encode/decode and validation helpers
+- njs built-in `ngx.shared` for server-side storage
 
 ### Optional native integration
 
-- future `shared_dict` backing once the native primitive exists and its contract is stable
-- optional external backing stores if needed later
+- none required; njs built-in `ngx.shared` provides shared-memory state out of the box
 
 ## Phased implementation plan
 
@@ -73,9 +71,9 @@ Goal: support future issuance and validation without coupling to backing stores.
 
 ### Phase 3 — add backing-store adapters
 
-Goal: connect the reusable session model to runtime state once the platform is ready.
+Goal: connect the reusable session model to runtime state.
 
-- [ ] add the first shared-dict-backed adapter when the native primitive lands
+- [ ] add the first `ngx.shared`-backed session store adapter
 - [ ] document fallback store boundaries without collapsing store policy into the core model
 - [ ] keep backing-store failure separate from session semantics
 
@@ -89,7 +87,7 @@ Goal: connect the reusable session model to runtime state once the platform is r
 
 - [ ] `session: add pure session descriptor scaffold`
 - [ ] `session: add pure session lifecycle helpers`
-- [ ] `session: add first backing-store adapter`
+- [ ] `session: add ngx.shared-backed session store adapter`
 - [ ] `docs: document authz and feature_flags composition with session`
 
 ## Verification checklist

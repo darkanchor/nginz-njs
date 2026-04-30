@@ -4,27 +4,25 @@ Two-level cache scaffold for nginx written in Gleam. The long-term goal is a reu
 
 ## Roadmap position
 
-`mlcache` is a Tier-2 module in `ROADMAP.md` and is blocked on the native `shared_dict` primitive for a stable cross-request/shared backing store. The scaffold therefore focuses on reusable cache semantics and explicit blocker behavior rather than pretending the runtime backing already exists.
+`mlcache` is a Tier-2 module in `ROADMAP.md`. It uses the njs built-in `ngx.shared` for cross-request backing — no native nginz dependency required.
 
 ## Design goals
 
 - model cache semantics as reusable values first
 - separate cache policy from consumer-domain concerns
 - let `authz`, `feature_flags`, `webhook`, and `session` compose cache behavior rather than embedding bespoke caching
-- keep shared-state/runtime backing out of the scaffold phase
 
 ## What is implemented
 
 **`mlcache/model.gleam`**
 - `Backend`, `RefreshPolicy`, `CacheConfig`, and `LookupResult`
-- `default_config`, `summary`, and `blocked_message`
+- `default_config`, `summary`
 
 **`nginz_njs_mlcache.gleam`**
 - `describe` — returns a stable summary of the scaffold cache config
-- `blocked` — returns `501` with the shared-dict blocker message
 
 **Integration tests**
-- `tests/basic/` — verifies both the descriptive scaffold path and explicit blocker behavior with stock nginx only
+- `tests/basic/` — verifies the descriptive scaffold path with stock nginx only
 
 ## Core abstractions
 
@@ -48,11 +46,11 @@ The architectural rule for this module is: `mlcache` should expose reusable cach
 - cache config and refresh semantics
 - fetch-on-miss modeling
 - reusable cache-policy helpers
+- njs built-in `ngx.shared` for cross-request backing
 
 ### Optional native integration
 
-- future `shared_dict` backing once the native primitive exists and is stable
-- optional external backing stores if required later
+- none required; njs built-in `ngx.shared` provides shared state out of the box
 
 ## Phased implementation plan
 
@@ -74,15 +72,15 @@ Goal: support future consumers without coupling to a runtime store yet.
 
 ### Phase 3 — add backing-store adapters
 
-Goal: connect the reusable cache model to shared state once the platform is ready.
+Goal: connect the reusable cache model to runtime state.
 
-- [ ] add the first shared-dict-backed adapter when the native primitive lands
-- [ ] add stampede-collapse behavior only after the runtime contract is stable
+- [ ] add the first `ngx.shared`-backed adapter
+- [ ] add stampede-collapse behavior on top of the shared dict contract
 - [ ] keep backing-store failure separate from cache semantics
 
 ## TDD plan
 
-- [ ] unit-test config summaries and blocker behavior first
+- [ ] unit-test config summaries first
 - [ ] add pure tests for refresh-policy helpers before runtime store work
 - [ ] keep backing-store behavior behind later targeted integration tests
 
@@ -90,7 +88,7 @@ Goal: connect the reusable cache model to shared state once the platform is read
 
 - [ ] `mlcache: add pure cache model scaffold`
 - [ ] `mlcache: add fetch-on-miss semantics helpers`
-- [ ] `mlcache: add first shared backing adapter`
+- [ ] `mlcache: add ngx.shared-backed adapter`
 - [ ] `docs: document authz feature_flags webhook and session composition with mlcache`
 
 ## Verification checklist

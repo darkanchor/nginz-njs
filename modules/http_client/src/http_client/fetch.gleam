@@ -56,11 +56,19 @@ fn to_runtime_request(req: client.Request) -> request.Request {
   }
 }
 
+fn fetch_args(req: client.Request) -> ngx.JsObject {
+  let opts = ngx.object()
+  case req.timeout_ms {
+    Some(ms) -> ngx.merge(opts, "timeout", ms)
+    None -> opts
+  }
+}
+
 pub fn execute(req: client.Request) -> Promise(Result(Response, ClientError)) {
   let fetch_promise =
     req
     |> to_runtime_request
-    |> ngx.fetch_request(Nil)
+    |> ngx.fetch_request(fetch_args(req))
     |> promise.await(fn(resp) {
       use body <- promise.await(response.text(resp))
       promise.resolve(Ok(Response(status: response.status(resp), body: body)))

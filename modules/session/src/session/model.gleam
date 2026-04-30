@@ -42,6 +42,4 @@ pub fn summary(descriptor: SessionDescriptor) -> String {
   <> descriptor.cookie.same_site
 }
 
-pub fn blocked_message() -> String {
-  "session runtime blocked until native shared_dict backing is available"
-}
+

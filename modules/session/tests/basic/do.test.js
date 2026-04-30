@@ -25,12 +25,4 @@ describe("session — scaffold demo", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("sid backend=shared_dict ttl=3600 same_site=Lax");
   });
-
-  test("blocked returns explicit shared_dict blocker", async () => {
-    const res = await fetch(`${TEST_URL}/blocked`);
-    expect(res.status).toBe(501);
-    expect(await res.text()).toBe(
-      "session runtime blocked until native shared_dict backing is available",
-    );
-  });
 });

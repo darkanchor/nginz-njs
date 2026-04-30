@@ -52,7 +52,7 @@ Uses FNV-1a hash of the key string, modulo 100. Buckets are stable: the same key
 
 ## Limitations
 
-- Flag configuration is static per nginx reload. For runtime flag changes without reload, store flag state in `ngx.shared` (requires the nginz shared-dict native module) and read it from the handler.
+- Flag configuration is static per nginx reload. For runtime flag changes without reload, store flag state in the njs built-in `ngx.shared` dict and read it from the handler.
 - Bucket distribution assumes the key space is well-distributed (UUIDs, random request IDs). Sequential IDs may cluster.
 - No flag dependency evaluation. Flags are evaluated independently.
 - Once shared state exists, runtime-backed lookup should ideally compose a reusable cache/state module such as `mlcache` rather than embedding cache policy directly into `feature_flags`.

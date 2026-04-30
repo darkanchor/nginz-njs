@@ -27,6 +27,7 @@ Every module in this repo has two distinct surfaces:
 2. a **final njs interface** in `src/nginz_njs_<name>.gleam`, exposed through `pub fn exports() -> JsObject`
 
 The project encourages FP composibility and modularity, a highly reusable component might not have its own `exports()` at all.
+Aggressive refactors are appreciated when real reusable components get minted in the njs domain.
 
 The first surface is the real product. Modules are meant to be used by other Gleam modules inside/outside this monorepo as ordinary building blocks, as long as they expose stable public interfaces. The `exports()` function is the last-mile adapter that turns those building blocks into an nginx-facing njs module and, in this repo today, is also what integration tests exercise.
 
@@ -134,8 +135,8 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
 | [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
 | [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
-| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling and explicit shared-dict blocker | scaffold |
-| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics and explicit shared-dict blocker | scaffold |
+| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling backed by njs built-in `ngx.shared` | scaffold |
+| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics backed by njs built-in `ngx.shared` | scaffold |
 | [`nginz_njs_response_transform`](modules/response_transform/) | Response/body-shaping scaffold for reusable transform plans | scaffold |
 | [`nginz_njs_webhook`](modules/webhook/) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
 | [`nginz_njs_metrics`](modules/metrics/) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
@@ -389,7 +390,7 @@ Scripted modules in this repo orchestrate and compose the native primitives:
 - `nginz_njs_http_client` is the typed scripted wrapper layer over built-in `ngx.fetch()`
 - `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
 - `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
-- `nginz_njs_feature_flags` will use shared-dict state once the native `shared_dict` module lands
+- `nginz_njs_feature_flags` will use njs built-in `ngx.shared` for runtime-togglable flag state
 
 See [ROADMAP.md](ROADMAP.md) for the scripted module roadmap.
 

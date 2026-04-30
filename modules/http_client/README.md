@@ -13,27 +13,37 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 - keep nginx effects at the edge and core request shaping in Gleam
 - the pure `Request` model is the stable input to all execution helpers
 
-## What is implemented (Phases 1–3 complete)
+## What is implemented (Phases 1–5 complete)
 
 **`http_client/client.gleam`** — pure request model
 - `Method` — 7 HTTP methods as a sum type (Get, Head, Post, Put, Patch, Delete, Options)
 - `Request` — typed descriptor with headers, auth, body, query params, timeout
-- 8 builder helpers: `with_method`, `with_header`, `with_headers`, `with_bearer_token`, `with_body`, `with_query_param`, `with_query_params`, `with_timeout`
-- `build_url` — assembles URL with query params
-- `summary` — deterministic rendering for testing (17 unit tests)
+- 8 builder helpers
+- `build_url`, `summary` — deterministic for testing
 
 **`http_client/fetch.gleam`** — execution layer
 - `Response(status: Int, body: String)` — typed HTTP response
-- `ClientError` — `FetchFailed`, `Timeout`, `InvalidUrl`, `InvalidRequest` (Timeout/Invalid* reserved for Phase 4)
-- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)`
+- `ClientError` — `FetchFailed`, `Timeout`, `InvalidUrl`, `InvalidRequest`
+- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)` with timeout enforcement
 - Response helpers: `is_success`, `is_client_error`, `is_server_error`, `is_redirect`, `status_text`
 
-**`nginz_njs_http_client.gleam`** — njs entry point
-- `demo` — returns stable request summary
-- `fetch_demo` — real `ngx.fetch()` to another nginx location
-- `request_demo` — full builder pipeline exercising headers, body, query params, auth, timeout
+**`http_client/policy.gleam`** — retry composition
+- `RetryPolicy` — `NoRetry` or `Retry(max_attempts)` (immediate only)
+- `Policy` — composable execution policy wrapper
+- `execute_with_policy` — runs `execute()` with retry semantics
 
-**Integration tests** — 3 scenarios with stock nginx, no native deps.
+**`http_client/middleware.gleam`** — composable request transformations
+- `Middleware` — pure `fn(Request) -> Request`
+- `stack` — left-to-right composition
+- Pre-built: `bearer_token`, `add_header`, `json_content_type`, `timeout_ms`
+
+**`http_client/response.gleam`** — body extraction helpers
+- `body_or`, `body_if_success`, `body_if_status`
+
+**`nginz_njs_http_client.gleam`** — njs entry point (5 handlers)
+- `demo`, `fetch_demo`, `request_demo`, `middleware_demo`, `retry_demo`
+
+**Integration tests** — 5 scenarios with stock nginx, no native deps.
 
 ## Core abstractions
 
@@ -82,28 +92,29 @@ The architectural rule for this module: request construction and response interp
 - [x] keep parsing/classification separate from request execution
 - [x] workflow module consumes all error variants
 
-### Phase 4 — add policy wrappers around execution
+### Phase 4 — add policy wrappers around execution ✅
 
-- [ ] add typed retry policy values
-- [ ] add timeout policy wrappers
-- [ ] add auth/header injection helpers that compose with `Request`
-- [ ] generate `Timeout`/`InvalidUrl`/`InvalidRequest` errors from wrappers
+- [x] add typed retry policy values (`RetryPolicy`, `Policy`)
+- [x] add timeout enforcement via `ngx.fetch()` options
+- [x] add composable middleware for auth/header injection
+- [x] immediate retry with `execute_with_policy` (backoff delay blocked by njs timer context)
 
-### Phase 5 — prepare for ecosystem reuse
+### Phase 5 — prepare for ecosystem reuse ✅
 
-- [ ] document patterns for use from `authz`, `webhook`, and future modules
-- [ ] add examples showing pure request construction reused across multiple handlers
-- [ ] consider JSON helpers, middleware-style composition
+- [x] document patterns for use from `workflow`, `authz`, `webhook`, and future modules
+- [x] add middleware-style composition (`Middleware`, `stack`)
+- [x] add response body helpers (`body_or`, `body_if_success`, `body_if_status`)
+- [x] examples showing pure request construction reused across multiple handlers
 
 ## TDD plan
 
-- [x] unit-test request builders and pure model transformations (17 tests)
-- [x] integration test for real `ngx.fetch()` path (3 scenarios)
-- [ ] retries, timeouts, and higher-level policies behind their own test cases
+- [x] unit-test request builders and pure model transformations (34 tests)
+- [x] integration test for real `ngx.fetch()` path (5 scenarios)
+- [x] retries and policy wrappers behind their own test cases
 - [x] integration tests distinguish stock-nginx behavior from native-backed scenarios
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js http_client` — 17 unit tests pass
-- [x] `bun test modules/http_client/tests/basic/do.test.js` — 3 integration tests pass
-- [x] `bun run test` — all 66 unit + 23 integration tests pass across all modules
+- [x] `bun scripts/test.js http_client` — 34 unit tests pass
+- [x] `bun test modules/http_client/tests/basic/do.test.js` — 5 integration tests pass
+- [x] `bun run test` — all 83 unit + 25 integration tests pass across all modules

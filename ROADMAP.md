@@ -6,10 +6,9 @@
 
 - **native Zig modules** (in `nginz`) provide primitives: JWT verification, rate-limit counters, shared-memory state, WAF engines, upstream balancers
 - **scripted Gleam modules** (here) provide orchestration, policy logic, product customization, and protocol glue
+- **njs built-ins** (`ngx.shared`, `ngx.fetch`, Web Crypto, timers) are available to all scripted modules without any native dependency
 
 This is the right analogue to the OpenResty ecosystem — not "replace the server with scripts," but "use scripts as the composition and customization layer on top of strong native primitives."
-
-The `nginz` ROADMAP prioritizes: HTTP njs hook module → shared dict → upstream balancer. Each of those unlocks or improves scripted modules here. This repo intentionally stays ahead of the native layer: scripted modules define what the platform needs; native primitives follow.
 
 ## Native vs scripted decision framework
 
@@ -32,11 +31,11 @@ When both columns apply: build a native primitive and expose it through njs. Tha
 
 #### `http_client` — `ngx.fetch()` wrapper
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** `lua-resty-http`  
 **Blockers:** none
 
-The njs surface already has `ngx.fetch()`. A module scaffold now exists; what to ship next is a typed Gleam wrapper with request building, response parsing, retry, timeout, and auth header injection as first-class types.
+The njs surface already has `ngx.fetch()`. The module provides a typed Gleam wrapper with request building, response parsing, retry policy, timeout enforcement, composable middleware, and auth header injection as first-class types.
 
 Why first:
 - No native dependency — ships immediately
@@ -54,19 +53,19 @@ Parallel and sequential subrequest pipelines. Fan-out to multiple internal locat
 
 Roadmap integration:
 - Pairs with `requestid` and `jwt` native modules for auth + enrichment flows
-- Will benefit from shared-dict result caching once that native module lands
+- Can use njs built-in `ngx.shared` for result caching
 
 #### `nginz_njs_feature_flags` — stable bucketing
 
 **Status:** scaffold  
 **Lua analog:** various custom solutions backed by `lua-resty-mlcache`  
-**Blockers:** none (flag state can come from nginx variables or upstream fetch; shared dict improves it)
+**Blockers:** none
 
-Flag evaluation with FNV-1a stable bucketing. Reads flag state from nginx variables.
+Flag evaluation with FNV-1a stable bucketing. Reads flag state from nginx variables or the built-in `ngx.shared` dict for runtime-togglable flags without config reload.
 
 Roadmap integration:
-- When `shared_dict` native module lands, flags can be toggled at runtime without config reload
-- Bucketing logic stays scripted; only the state store moves native
+- Flags can be toggled at runtime via the njs built-in `ngx.shared`
+- Bucketing logic stays scripted; state storage uses the njs shared dict
 
 #### `nginz_njs_authz` — policy / authorization engine
 
@@ -83,7 +82,7 @@ Why scripted:
 
 Roadmap integration:
 - Full JWT claim access requires `jwt` native module
-- Can cache introspection results per token hash once `shared_dict` lands
+- Can cache introspection results per token hash in the njs built-in `ngx.shared`
 
 ### Tier 2 — depends on or pairs with native work
 
@@ -91,19 +90,17 @@ Roadmap integration:
 
 **Status:** scaffold  
 **Lua analog:** `lua-resty-session`  
-**Blockers:** requires native `shared_dict` module
+**Blockers:** none (njs built-in `ngx.shared`)
 
-Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC via njs Web Crypto; shared dict for server-side store (or redis as fallback). The scripted layer handles token format and policy; the native layer provides the shared-memory store.
-
-> No session library should be treated as stable until the shared-dict primitive contract (value types, eviction model, atomic ops, expiration semantics) is stable.
+Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC via njs Web Crypto; njs built-in shared dict for server-side store. The scripted layer handles token format and lifecycle policy.
 
 #### `mlcache` — two-level LRU + shared dict cache
 
 **Status:** scaffold  
 **Lua analog:** `lua-resty-mlcache`  
-**Blockers:** requires native `shared_dict` module
+**Blockers:** none (njs built-in `ngx.shared`)
 
-njs manages LRU policy per-worker; shared dict is the backing layer. Includes stampede-collapse lock. Very high leverage once shared dict exists.
+njs manages LRU policy per-worker; njs built-in shared dict is the backing layer. Includes stampede-collapse lock. High leverage for caching fetch results, session data, and flag state.
 
 #### `response_transform` — body shaping
 
@@ -168,13 +165,13 @@ Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock pro
 2. `nginz_njs_workflow` — complete the scaffold; subrequest pipeline with `http_client`
 3. `nginz_njs_feature_flags` — complete the scaffold; stable bucketing + nginx var integration
 
-### Sprint 2 — state (after `shared_dict` native module)
+### Sprint 2 — state (njs built-in shared dict)
 
-4. `session` — cookie + AES/HMAC + shared dict backing
-5. `mlcache` — per-worker LRU + shared dict; unlocks high-performance scripted caching
-6. `nginz_njs_feature_flags` — wire flag state to shared dict for runtime toggling without reload
+4. `session` — cookie + AES/HMAC + njs `ngx.shared` backing
+5. `mlcache` — per-worker LRU + njs `ngx.shared`; unlocks high-performance scripted caching
+6. `nginz_njs_feature_flags` — wire flag state to njs `ngx.shared` for runtime toggling without reload
 
-### Sprint 3 — policy and enrichment (after `shared_dict` + `upstream_balancer`)
+### Sprint 3 — policy and enrichment
 
 7. `nginz_njs_authz` — complete JWT claim integration; add introspection cache path
 8. `response_transform` — body filter library
@@ -183,7 +180,7 @@ Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock pro
 ### Deferred
 
 - Phantom token — extend JWT module when OAuth introspection use case is concrete
-- Worker event bus — design together with shared dict; native work leads
+- Worker event bus — can use njs `ngx.shared` as signal channel; native atomic ops lead for cross-worker coordination
 - Geo/IP policy — depends on native geo module landing in `nginz`
 
 ## What belongs here vs what does not
@@ -216,7 +213,7 @@ These belong here even though C/Lua equivalents exist:
 ### What to avoid
 
 - Do **not** build scripted wrappers that duplicate native module behavior (JWT verification, WAF scoring)
-- Do **not** build modules that require shared-memory atomics outside of `ngx.shared`
+- Do **not** build modules that require shared-memory atomics or cross-worker locking beyond njs `ngx.shared`
 - Do **not** add a parallel scripting language runtime — njs/QuickJS is the committed path
 
 ## Distribution

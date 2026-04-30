@@ -25,12 +25,4 @@ describe("mlcache — scaffold demo", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("shared_dict policy=refresh_on_miss ttl=60");
   });
-
-  test("blocked returns explicit shared_dict blocker", async () => {
-    const res = await fetch(`${TEST_URL}/blocked`);
-    expect(res.status).toBe(501);
-    expect(await res.text()).toBe(
-      "mlcache runtime blocked until native shared_dict backing is available",
-    );
-  });
 });

@@ -50,6 +50,4 @@ pub fn summary(config: CacheConfig) -> String {
   <> int.to_string(config.ttl_seconds)
 }
 
-pub fn blocked_message() -> String {
-  "mlcache runtime blocked until native shared_dict backing is available"
-}
+

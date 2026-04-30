@@ -41,4 +41,18 @@ describe("http_client — scaffold demo", () => {
       "POST https://api.example.test/users?page=1&limit=20&sort=desc auth=Bearer demo-token timeout_ms=5000 body=some headers=2 qs=3pairs",
     );
   });
+
+  test("middleware_demo returns stacked middleware summary", async () => {
+    const res = await fetch(`${TEST_URL}/middleware-demo`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(
+      "POST https://api.example.test/items auth=Bearer demo-token timeout_ms=3000 body=none headers=2",
+    );
+  });
+
+  test("retry_demo performs fetch with retry policy (succeeds first attempt)", async () => {
+    const res = await fetch(`${TEST_URL}/retry-demo`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("fixture-response");
+  });
 });
