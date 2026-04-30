@@ -62,7 +62,7 @@ fn evaluate_handler(r: HTTPRequest) -> Nil {
   http.return_text(r, 200, result)
 }
 
-fn evaluate_js_set(r: HTTPRequest) -> Nil {
+fn evaluate_js_set(r: HTTPRequest) -> String {
   let vars = http.get_variables(r)
   let flag_name = case ngx.get(vars, "ff_name") {
     Ok(v) -> ngx.to_string(v)
@@ -75,7 +75,7 @@ fn evaluate_js_set(r: HTTPRequest) -> Nil {
     True -> "1"
     False -> "0"
   }
-  http.set_return_value(r, result)
+  result
 }
 
 fn read_variant_flag(r: HTTPRequest, name: String) -> VariantFlag {

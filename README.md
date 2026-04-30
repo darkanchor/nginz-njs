@@ -26,7 +26,7 @@ Every module in this repo has two distinct surfaces:
 1. a **reusable Gleam library surface** under `src/<name>/...`, made of clean `pub` types and functions
 2. a **final njs interface** in `src/nginz_njs_<name>.gleam`, exposed through `pub fn exports() -> JsObject`
 
-The project encourages FP composibility and modularity, a highly reusable component might not have its own `exports()` at all.
+The project encourages FP composability and modularity, a highly reusable component might not have its own `exports()` at all.
 Aggressive refactors are appreciated when real reusable components get minted in the njs domain.
 
 The first surface is the real product. Modules are meant to be used by other Gleam modules inside/outside this monorepo as ordinary building blocks, as long as they expose stable public interfaces. The `exports()` function is the last-mile adapter that turns those building blocks into an nginx-facing njs module and, in this repo today, is also what integration tests exercise.
@@ -134,7 +134,7 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_http_client`](modules/http_client/README.md) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
 | [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | complete |
 | [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
-| [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
+| [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | complete |
 | [`nginz_njs_session`](modules/session/README.md) | Session-state scaffold with reusable session modeling targeting njs built-in `ngx.shared` backing | scaffold |
 | [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache scaffold with reusable cache semantics targeting njs built-in `ngx.shared` backing | scaffold |
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Response/body-shaping scaffold for reusable transform plans | scaffold |
@@ -187,9 +187,9 @@ This installs a pre-commit hook that runs `gleam format` across all modules befo
 
 ### 4. Tool requirements
 
-- [Gleam](https://gleam.run) >= 1.14.0
+- [Gleam](https://gleam.run) >= 1.16.0
 - [Bun](https://bun.sh) >= 1.1.0
-- [Zig](https://ziglang.org) >= 0.14.0 (only needed for `make`)
+- [Zig](https://ziglang.org) >= 0.16.0 (only needed for `make`)
 
 ## Dev / test / package
 

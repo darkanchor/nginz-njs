@@ -15,7 +15,7 @@ Every module in this repo has two distinct surfaces:
 1. **Reusable Gleam library surface** — the `pub` types and functions under `src/<name>/...`
 2. **Final njs surface** — the `pub fn exports() -> JsObject` entrypoint in `src/nginz_njs_<name>.gleam`
 
-The project encourages FP composibility and modularity, a highly reusable component might not have its own `exports()` at all.
+The project encourages FP composability and modularity, a highly reusable component might not have its own `exports()` at all.
 Aggressive refactors are appreciated when real reusable components get minted in the njs domain.
 
 Treat the first surface as the primary design target. Modules are meant to be used by other Gleam modules inside/outside this monorepo as long as they expose clean public interfaces. The `exports()` function is the final adapter layer for nginx and is also what integration tests exercise today.

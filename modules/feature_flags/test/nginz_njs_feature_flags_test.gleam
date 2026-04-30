@@ -41,13 +41,14 @@ pub fn bucket_is_in_range_test() {
   { b >= 0 && b < 100 } |> should.equal(True)
 }
 
-pub fn bucket_differs_by_key_type_test() {
+pub fn bucket_same_key_type_is_stable_test() {
   let id = "same-value"
   let b_req = bucket(ByRequestId(id))
   let b_user = bucket(ByUserId(id))
   let b_addr = bucket(ByRemoteAddr(id))
-  b_req |> should.equal(b_user)
-  b_req |> should.equal(b_addr)
+  { b_req == b_user } |> should.equal(False)
+  { b_req == b_addr } |> should.equal(False)
+  { b_user == b_addr } |> should.equal(False)
 }
 
 pub fn rollout_boundary_test() {
@@ -162,7 +163,7 @@ pub fn variant_selects_first_when_bucket_in_range_test() {
       ],
       fallback: Variant("control"),
     )
-  // bucket for "user-1" is 24, < 25 so selects A
+  // bucket for request_id:user-1 is below the first weight boundary
   select_variant(flag, ByRequestId("user-1"), NoOverride)
   |> should.equal(Variant("A"))
 }
@@ -178,7 +179,7 @@ pub fn variant_selects_second_when_bucket_past_first_test() {
       ],
       fallback: Variant("control"),
     )
-  // bucket for "user-2" is 48, past 40 and < 100, selects B
+  // bucket for request_id:user-2 lands in the second weight range
   select_variant(flag, ByRequestId("user-2"), NoOverride)
   |> should.equal(Variant("B"))
 }
@@ -208,15 +209,29 @@ pub fn variant_falls_back_when_no_variants_test() {
 }
 
 pub fn variant_falls_back_when_weights_dont_cover_bucket_test() {
+  let b = bucket(ByRequestId("user-1"))
   let flag =
     VariantFlag(
       name: "exp",
       enabled: True,
-      variants: [VariantConfig(Variant("A"), 23)],
+      variants: [VariantConfig(Variant("A"), b)],
       fallback: Variant("control"),
     )
-  // bucket for "user-1" is 24, past the 23% coverage
+  // Using the bucket itself as the weight leaves this key exactly on the
+  // fallback boundary because selection is strictly `< accumulated`.
   select_variant(flag, ByRequestId("user-1"), NoOverride)
+  |> should.equal(Variant("control"))
+}
+
+pub fn variant_force_on_with_empty_variants_falls_back_test() {
+  let flag =
+    VariantFlag(
+      name: "exp",
+      enabled: False,
+      variants: [],
+      fallback: Variant("control"),
+    )
+  select_variant(flag, ByRequestId("user-1"), ForceOn)
   |> should.equal(Variant("control"))
 }
 

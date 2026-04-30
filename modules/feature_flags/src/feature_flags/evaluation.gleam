@@ -37,12 +37,16 @@ pub fn is_enabled(flag: Flag, key: BucketKey) -> Bool {
 }
 
 pub fn bucket(key: BucketKey) -> Int {
-  let id = case key {
-    ByRequestId(id) -> id
-    ByUserId(uid) -> uid
-    ByRemoteAddr(addr) -> addr
-  }
+  let id = bucket_identity(key)
   fnv1a(id) |> int.remainder(100) |> result.unwrap(0) |> int.absolute_value
+}
+
+fn bucket_identity(key: BucketKey) -> String {
+  case key {
+    ByRequestId(id) -> "request_id:" <> id
+    ByUserId(uid) -> "user_id:" <> uid
+    ByRemoteAddr(addr) -> "remote_addr:" <> addr
+  }
 }
 
 fn fnv1a(s: String) -> Int {

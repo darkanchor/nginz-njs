@@ -4,8 +4,8 @@ Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure has
 
 ## Design goals
 
-- Bucketing is a pure function of the identifier string — same input always maps to the same 0–99 bucket, no state required
-- Three bucket key types out of the box: by request id, user id, or remote address — same flag, different targeting granularity
+- Bucketing is a pure function of the targeting domain plus identifier string — the same key type and identifier always map to the same 0–99 bucket, no state required
+- Three bucket key types out of the box: request id, user id, and remote address each get their own stable bucket domain for the same flag
 - Flag configuration is read from nginx variables, keeping the evaluation path fully in-process with no I/O
 - `is_enabled` is a single boolean expression — easy to unit test exhaustively with known bucket values
 
@@ -22,8 +22,9 @@ Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure has
 
 **`nginz_njs_feature_flags.gleam`** (njs entry point)
 - `evaluate` — `js_content` handler for override-aware flag evaluation
-- `evaluate_js_set` — `js_set`-compatible handler for routing decisions (use with `js_set $var main.evaluate_js_set`)
+- `evaluate_js_set` — `js_set`-compatible handler for routing decisions (use with `js_set $var main.evaluate_js_set` after sourcing the required `ff_*` variables before nginx evaluates the variable)
 - `bucket` — returns the raw bucket number for the resolved key; useful for debugging
+- `variant`, `describe`, `describe_variant` — variant selection and observability-friendly decision outputs
 
 Flag config is set via nginx `set` directives or mapped from an upstream source:
 ```nginx
@@ -36,7 +37,7 @@ set $ff_dark_mode_override on;   # force on regardless of rollout
 ```
 
 **Integration tests**
-- `tests/basic/` — 7 scenarios: on/off, bucket determinism/range/distribution, force-on/force-off overrides
+- `tests/basic/` — 15 scenarios: on/off, bucket determinism/range/domain separation, force-on/force-off overrides, variants, describe handlers, and `js_set` evaluation
 
 ## Roadmap position
 
@@ -48,7 +49,7 @@ Shared state or hot reload via `ngx.shared` is a later adapter layer, not the he
 
 - `Flag` — the pure flag descriptor used by the evaluator
 - `BucketKey` — the stable identity used for assignment
-- `bucket(key)` — deterministic bucket assignment
+- `bucket(key)` — deterministic bucket assignment within a key-type-specific domain
 - `is_enabled(flag, key)` — the smallest boolean evaluation surface
 - later: variant-aware flags, override types, and config lookup helpers
 
@@ -88,10 +89,10 @@ Goal: make the pure evaluator reusable regardless of where configuration comes f
 
 Goal: increase expressiveness without introducing shared state.
 
-- [x] add key resolvers for header, query param, and explicit variable-derived identity (3 built-in: request_id, user_id, remote_addr)
+- [x] keep targeting variable-driven while supporting 3 built-in key domains: request_id, user_id, remote_addr
 - [x] add request-local force-on and force-off overrides (`Override` type, `$ff_<name>_override` nginx var)
 - [x] define clear precedence: override > rollout percentage (enforced in `evaluate()`)
-- [x] document how targeting stays deterministic even when request sources differ
+- [x] document how targeting stays deterministic while preserving separate bucket domains per key type
 
 ### Phase 3 — add multi-variant evaluation ✅
 
@@ -126,7 +127,7 @@ Goal: improve operability later without disturbing the pure evaluator.
 - [x] unit-test variant config parsing (4 tests)
 - [x] unit-test decision metadata output format (4 tests)
 - [x] add `tests/basic/` coverage for overrides, variants, and describe handlers (5 new scenarios)
-- [ ] add integration tests for `js_set` usage (handler exists, njs runtime behavior needs verification)
+- [x] add integration tests for `js_set` usage (handler exists, njs runtime behavior verified)
 - [ ] isolate future shared-state adapters from the baseline deterministic evaluator tests
 
 ## Atomic commit strategy
@@ -140,7 +141,7 @@ Goal: improve operability later without disturbing the pure evaluator.
 ## Verification checklist
 
 - [x] `bun scripts/test.js feature_flags` — 37 unit tests pass
-- [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 12 integration tests pass
+- [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 15 integration tests pass
 - [x] Manual: set `rollout_pct=50`, send 1000 requests with random user ids, verify ~50% get `"1"`
 - [x] Manual: set `rollout_pct=0`, verify all requests get `"0"` regardless of key
 - [x] Manual: set `rollout_pct=100`, verify all requests get `"1"` regardless of key

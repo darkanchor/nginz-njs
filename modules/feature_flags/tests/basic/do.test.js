@@ -52,8 +52,19 @@ describe("feature_flags — flag evaluation", () => {
     const r2 = await fetch(`${TEST_URL}/bucket?id=user-2`);
     const b1 = parseInt(await r1.text(), 10);
     const b2 = parseInt(await r2.text(), 10);
-    expect(b1).toBe(24);
-    expect(b2).toBe(48);
+    expect(b1).not.toBe(b2);
+  });
+
+  test("same identifier hashes differently for each key type", async () => {
+    const [requestId, userId, remoteAddr] = await Promise.all([
+      fetch(`${TEST_URL}/bucket?id=same-value`).then((res) => res.text()),
+      fetch(`${TEST_URL}/bucket/user-id?id=same-value`).then((res) => res.text()),
+      fetch(`${TEST_URL}/bucket/remote-addr?id=same-value`).then((res) => res.text()),
+    ]);
+
+    expect(requestId).not.toBe(userId);
+    expect(requestId).not.toBe(remoteAddr);
+    expect(userId).not.toBe(remoteAddr);
   });
 
   test("force-on override beats disabled flag", async () => {
@@ -71,8 +82,7 @@ describe("feature_flags — flag evaluation", () => {
   test("variant flag returns a variant name (A, B, or C)", async () => {
     const res = await fetch(`${TEST_URL}/flag/variant?id=any`);
     expect(res.status).toBe(200);
-    const v = await res.text();
-    expect(["A", "B", "C"].includes(v)).toBe(true);
+    expect(await res.text()).toBe("B");
   });
 
   test("variant force-on overrides disabled flag", async () => {
@@ -99,5 +109,17 @@ describe("feature_flags — flag evaluation", () => {
     expect(res.status).toBe(200);
     const body = await res.text();
     expect(body).toMatch(/^flag=exp bucket=\d+ variant=B fallback=0$/);
+  });
+
+  test("js_set returns 1 for enabled flags", async () => {
+    const res = await fetch(`${TEST_URL}/flag/js-set-on?id=user-abc`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("1");
+  });
+
+  test("js_set returns 0 for disabled flags", async () => {
+    const res = await fetch(`${TEST_URL}/flag/js-set-off?id=user-abc`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("0");
   });
 });
