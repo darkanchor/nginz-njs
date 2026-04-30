@@ -55,4 +55,49 @@ describe("feature_flags — flag evaluation", () => {
     expect(b1).toBe(24);
     expect(b2).toBe(48);
   });
+
+  test("force-on override beats disabled flag", async () => {
+    const res = await fetch(`${TEST_URL}/flag/force-on?id=any`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("1");
+  });
+
+  test("force-off override beats enabled flag", async () => {
+    const res = await fetch(`${TEST_URL}/flag/force-off?id=any`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("0");
+  });
+
+  test("variant flag returns a variant name (A, B, or C)", async () => {
+    const res = await fetch(`${TEST_URL}/flag/variant?id=any`);
+    expect(res.status).toBe(200);
+    const v = await res.text();
+    expect(["A", "B", "C"].includes(v)).toBe(true);
+  });
+
+  test("variant force-on overrides disabled flag", async () => {
+    const res = await fetch(`${TEST_URL}/flag/variant-force-on?id=any`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("A");
+  });
+
+  test("variant is stable across requests for the same id", async () => {
+    const r1 = await fetch(`${TEST_URL}/flag/variant?id=stable`);
+    const r2 = await fetch(`${TEST_URL}/flag/variant?id=stable`);
+    expect(await r1.text()).toBe(await r2.text());
+  });
+
+  test("describe returns decision metadata for boolean flag", async () => {
+    const res = await fetch(`${TEST_URL}/flag/describe?id=u`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toMatch(/^flag=test bucket=\d+ result=1$/);
+  });
+
+  test("describe_variant returns decision metadata for variant flag", async () => {
+    const res = await fetch(`${TEST_URL}/flag/describe-variant?id=u`);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toMatch(/^flag=exp bucket=\d+ variant=B fallback=0$/);
+  });
 });
