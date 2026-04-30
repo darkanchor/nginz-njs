@@ -131,7 +131,7 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 
 | Module | Purpose | Status |
 |---|---|---|
-| [`nginz_njs_http_client`](modules/http_client/) | Typed `ngx.fetch()` wrapper with substantial Phase 1–5 foundations in place | complete |
+| [`nginz_njs_http_client`](modules/http_client/) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
 | [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
 | [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
 | [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |

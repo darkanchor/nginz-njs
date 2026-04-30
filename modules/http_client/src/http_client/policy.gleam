@@ -12,9 +12,9 @@ pub type RetryPolicy {
 }
 
 /// A composed execution policy combining retry behaviour with the timeout
-/// that is already carried on the `Request` record. The timeout is enforced
-/// by `ngx.fetch()` options; this policy wrapper just ensures the value is
-/// present on the request before execution.
+/// that is already carried on the `Request` record. Timeout is handled by the
+/// execution layer itself rather than by native per-request `ngx.fetch()`
+/// options.
 ///
 pub type Policy {
   Policy(retry: RetryPolicy)

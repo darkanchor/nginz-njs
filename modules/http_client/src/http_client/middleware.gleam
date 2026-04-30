@@ -40,7 +40,7 @@ pub fn json_content_type() -> Middleware {
   add_header("Content-Type", "application/json")
 }
 
-/// Set the request timeout.
+/// Set the request timeout hint used by the http_client execution layer.
 ///
 pub fn timeout_ms(ms: Int) -> Middleware {
   fn(req: Request) -> Request { client.with_timeout(req, ms) }

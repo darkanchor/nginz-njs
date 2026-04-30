@@ -2,6 +2,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import njs/querystring
 
 pub type Method {
   Get
@@ -23,6 +24,12 @@ pub type Request {
     query_params: List(#(String, String)),
     timeout_ms: Option(Int),
   )
+}
+
+pub type ValidationError {
+  EmptyUrl
+  InvalidUrl(url: String)
+  InvalidTimeout(timeout_ms: Int)
 }
 
 pub fn new(url: String) -> Request {
@@ -100,10 +107,42 @@ pub fn build_url(request: Request) -> String {
     params -> {
       let qs =
         params
-        |> list.map(fn(pair) { pair.0 <> "=" <> pair.1 })
+        |> list.map(fn(pair) {
+          querystring.escape(pair.0) <> "=" <> querystring.escape(pair.1)
+        })
         |> string.join("&")
       request.url <> "?" <> qs
     }
+  }
+}
+
+pub fn validate(request: Request) -> Result(Request, ValidationError) {
+  case string.length(request.url) == 0 {
+    True -> Error(EmptyUrl)
+    False ->
+      case request.timeout_ms {
+        Some(ms) if ms <= 0 -> Error(InvalidTimeout(ms))
+        _ -> validate_url(request)
+      }
+  }
+}
+
+fn validate_url(request: Request) -> Result(Request, ValidationError) {
+  case string.split(request.url, "://") {
+    [scheme, rest] ->
+      case scheme == "http" || scheme == "https" {
+        False -> Error(InvalidUrl(request.url))
+        True ->
+          case
+            string.length(rest) > 0
+            && !string.starts_with(rest, "/")
+            && !string.contains(rest, " ")
+          {
+            True -> Ok(request)
+            False -> Error(InvalidUrl(request.url))
+          }
+      }
+    _ -> Error(InvalidUrl(request.url))
   }
 }
 

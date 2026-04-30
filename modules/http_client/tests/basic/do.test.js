@@ -55,4 +55,22 @@ describe("http_client — scaffold demo", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("fixture-response");
   });
+
+  test("invalid_url_demo returns typed invalid url error", async () => {
+    const res = await fetch(`${TEST_URL}/invalid-url-demo`);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("invalid url: ftp://example.invalid");
+  });
+
+  test("invalid_request_demo returns typed invalid request error", async () => {
+    const res = await fetch(`${TEST_URL}/invalid-request-demo`);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("timeout_ms must be > 0, got 0");
+  });
+
+  test("timeout_demo returns typed timeout error", async () => {
+    const res = await fetch(`${TEST_URL}/timeout-demo`);
+    expect(res.status).toBe(504);
+    expect(await res.text()).toBe("timeout after 10ms");
+  });
 });

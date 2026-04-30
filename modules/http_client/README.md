@@ -13,7 +13,7 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 - keep nginx effects at the edge and core request shaping in Gleam
 - the pure `Request` model is the stable input to all execution helpers
 
-## What is implemented (substantial Phase 1–5 foundations)
+## What is implemented (Phases 1–5 complete)
 
 **`http_client/client.gleam`** — pure request model
 - `Method` — 7 HTTP methods as a sum type (Get, Head, Post, Put, Patch, Delete, Options)
@@ -24,7 +24,7 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 **`http_client/fetch.gleam`** — execution layer
 - `Response(status: Int, body: String)` — typed HTTP response
 - `ClientError` — `FetchFailed`, `Timeout`, `InvalidUrl`, `InvalidRequest`
-- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)`; today it emits `FetchFailed`, while richer variants are reserved for later policy/validation layers
+- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)` and now emits `FetchFailed`, `Timeout`, `InvalidUrl`, and `InvalidRequest`
 - Response helpers: `is_success`, `is_client_error`, `is_server_error`, `is_redirect`, `status_text`
 
 **`http_client/policy.gleam`** — retry composition
@@ -55,7 +55,7 @@ The architectural rule for this module: request construction and response interp
 
 ## Scripted core vs optional native integration
 
-### Scripted core (implemented today)
+### Scripted core (all implemented)
 
 - request construction, headers, body, query params
 - auth/header shaping
@@ -92,14 +92,14 @@ The architectural rule for this module: request construction and response interp
 - [x] keep parsing/classification separate from request execution
 - [x] workflow module consumes all error variants
 
-### Phase 4 — add policy wrappers around execution (partially in place)
+### Phase 4 — add policy wrappers around execution ✅
 
 - [x] add typed retry policy values (`RetryPolicy`, `Policy`)
-- [x] pass timeout hints through `ngx.fetch()` options
+- [x] add client-observed timeout enforcement in the execution layer
 - [x] add composable middleware for auth/header injection
 - [x] immediate retry with `execute_with_policy` (backoff delay blocked by njs timer context)
 
-### Phase 5 — prepare for ecosystem reuse (partially in place)
+### Phase 5 — prepare for ecosystem reuse ✅
 
 - [x] document patterns for use from `workflow`, `authz`, `webhook`, and future modules
 - [x] add middleware-style composition (`Middleware`, `stack`)
@@ -108,13 +108,13 @@ The architectural rule for this module: request construction and response interp
 
 ## TDD plan
 
-- [x] unit-test request builders and pure model transformations (34 tests)
-- [x] integration test for real `ngx.fetch()` path (5 scenarios)
+- [x] unit-test request builders, validation, and pure model transformations (40 tests)
+- [x] integration test for real `ngx.fetch()` path, validation failures, and timeout behavior (8 scenarios)
 - [x] retries and policy wrappers behind their own test cases
 - [x] integration tests distinguish stock-nginx behavior from native-backed scenarios
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js http_client` — 34 unit tests pass
-- [x] `bun test modules/http_client/tests/basic/do.test.js` — 5 integration tests pass
+- [x] `bun scripts/test.js http_client` — 40 unit tests pass
+- [x] `bun test modules/http_client/tests/basic/do.test.js` — 8 integration tests pass
 - [x] `bun run test` — all 83 unit + 25 integration tests pass across all modules

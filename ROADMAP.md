@@ -31,11 +31,11 @@ When both columns apply: build a native primitive and expose it through njs. Tha
 
 #### `http_client` — `ngx.fetch()` wrapper
 
-**Status:** complete (with later refinements still open)  
+**Status:** complete  
 **Lua analog:** `lua-resty-http`  
 **Blockers:** none
 
-The njs surface already has `ngx.fetch()`. The module now provides a substantial typed Gleam wrapper with request building, response parsing helpers, immediate retry policy, middleware composition, and auth header injection as first-class types. Richer timeout/error normalization and later refinements still remain open work.
+The njs surface already has `ngx.fetch()`. The module now provides a typed Gleam wrapper with request building, validation, emitted timeout/error variants, response parsing helpers, immediate retry policy, middleware composition, and auth header injection as first-class types.
 
 Why first:
 - No native dependency — ships immediately

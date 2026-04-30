@@ -1,6 +1,6 @@
 # http_client
 
-Typed `ngx.fetch()` wrapper. Substantial Phase 1–5 foundations are in place: an expanded pure request model, a typed fetch execution path with body support, response classification helpers, immediate retry policy wrappers, composable middleware, and response body helpers.
+Typed `ngx.fetch()` wrapper. Phases 1–5 are complete: an expanded pure request model, a typed fetch execution path with body support, emitted validation/timeout errors, response classification helpers, retry policy wrappers, composable middleware, and response body helpers.
 
 ## Exports
 
@@ -72,7 +72,12 @@ pub type ClientError {
 }
 ```
 
-Currently `execute()` only produces `FetchFailed`. `Timeout`, `InvalidUrl`, and `InvalidRequest` are already part of the public error model, but they are not yet emitted by `execute()` itself; they are reserved for future policy and validation layers.
+`execute()` produces all four variants today:
+
+- `FetchFailed` — runtime transport/fetch failure
+- `Timeout` — client-observed timeout from the execution layer
+- `InvalidUrl` — malformed or unsupported URL input
+- `InvalidRequest` — invalid request configuration such as a non-positive timeout
 
 ## Response helpers
 
@@ -102,7 +107,7 @@ use result <- promise.await(execute_with_policy(req, policy))
 - `RetryPolicy` — `NoRetry` or `Retry(max_attempts)`
 - `Policy` — wraps `RetryPolicy`; extensible for future options
 - Immediate retry only (no backoff delay) — njs timer callbacks run outside request context and break `ngx.fetch()`
-- `timeout_ms` is passed through to `ngx.fetch()` options; the distinct `Timeout` error variant is not yet emitted by `execute()`
+- `timeout_ms` is enforced by the execution layer via promise racing; this produces a client-observed timeout result but does not abort an already in-flight upstream fetch
 
 ## Middleware
 
@@ -147,9 +152,8 @@ body_if_status(response, 201)             // Ok(body) if status matches
 
 - only a text-response fetch path is implemented (no streaming or binary body access)
 - retry is immediate-only (no backoff delay) — njs timer context restrictions prevent `ngx.fetch()` after `setTimeout`
-- `Timeout`, `InvalidUrl`, and `InvalidRequest` are part of the public error model, but `execute()` currently only produces `FetchFailed`
+- timeout is client-observed and does not abort an already in-flight upstream fetch
 - no circuit breaker logic or connection pooling
-- query param values are not URL-encoded
 - `ngx.fetch()` is subject to njs async limitations inside certain nginx phases
 - integration targets another nginx location rather than an external upstream process
 - JSON body parsing requires `gleam_json` as an additional dependency (not yet added)
@@ -157,9 +161,9 @@ body_if_status(response, 201)             // Ok(body) if status matches
 ## Testing
 
 ```bash
-# unit tests (34 tests — pure model, builders, response helpers, policy, middleware)
+# unit tests (40 tests — pure model, validation, builders, response helpers, policy, middleware)
 cd modules/http_client && gleam test
 
-# integration tests (5 scenarios — demo, fetch_demo, request_demo, middleware_demo, retry_demo)
+# integration tests (8 scenarios — demo, fetch_demo, request_demo, middleware_demo, retry_demo, invalid_url_demo, invalid_request_demo, timeout_demo)
 bun test modules/http_client/tests/basic/do.test.js
 ```

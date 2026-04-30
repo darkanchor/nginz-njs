@@ -1,3 +1,4 @@
+import gleam/int
 import gleam/javascript/array
 import gleam/javascript/promise.{type Promise}
 import gleam/list
@@ -21,9 +22,6 @@ pub type ClientError {
   InvalidRequest(reason: String)
 }
 
-/// `execute()` currently emits `FetchFailed` for runtime fetch failures.
-/// The other variants are part of the public error model and are intended for
-/// future validation and policy layers layered on top of raw execution.
 fn build_headers(req: client.Request) -> headers.Headers {
   let base = req.headers
   let with_auth = case req.auth_header {
@@ -59,27 +57,51 @@ fn to_runtime_request(req: client.Request) -> request.Request {
   }
 }
 
-fn fetch_args(req: client.Request) -> ngx.JsObject {
-  let opts = ngx.object()
-  case req.timeout_ms {
-    Some(ms) -> ngx.merge(opts, "timeout", ms)
-    None -> opts
+fn fetch_args(_req: client.Request) -> ngx.JsObject {
+  ngx.object()
+}
+
+fn timeout_promise(timeout_ms: Int) -> Promise(Result(Response, ClientError)) {
+  promise.wait(timeout_ms)
+  |> promise.map(fn(_) { Error(Timeout(timeout_ms)) })
+}
+
+fn validated_request(
+  req: client.Request,
+) -> Result(client.Request, ClientError) {
+  case client.validate(req) {
+    Ok(valid) -> Ok(valid)
+    Error(client.EmptyUrl) -> Error(InvalidRequest("url must not be empty"))
+    Error(client.InvalidUrl(url)) -> Error(InvalidUrl(url))
+    Error(client.InvalidTimeout(ms)) ->
+      Error(InvalidRequest("timeout_ms must be > 0, got " <> int.to_string(ms)))
   }
 }
 
 pub fn execute(req: client.Request) -> Promise(Result(Response, ClientError)) {
-  let fetch_promise =
-    req
-    |> to_runtime_request
-    |> ngx.fetch_request(fetch_args(req))
-    |> promise.await(fn(resp) {
-      use body <- promise.await(response.text(resp))
-      promise.resolve(Ok(Response(status: response.status(resp), body: body)))
-    })
+  case validated_request(req) {
+    Error(err) -> promise.resolve(Error(err))
+    Ok(valid_req) -> {
+      let fetch_promise =
+        valid_req
+        |> to_runtime_request
+        |> ngx.fetch_request(fetch_args(valid_req))
+        |> promise.await(fn(resp) {
+          use body <- promise.await(response.text(resp))
+          promise.resolve(
+            Ok(Response(status: response.status(resp), body: body)),
+          )
+        })
+        |> promise.rescue(fn(error) {
+          Error(FetchFailed(string.inspect(error)))
+        })
 
-  promise.rescue(fetch_promise, fn(error) {
-    Error(FetchFailed(string.inspect(error)))
-  })
+      case valid_req.timeout_ms {
+        Some(ms) -> promise.race_list([fetch_promise, timeout_promise(ms)])
+        None -> fetch_promise
+      }
+    }
+  }
 }
 
 /// --- Response helpers ---

@@ -1,8 +1,9 @@
 import gleeunit
 import gleeunit/should
 import http_client/client.{
-  Delete, Get, Head, Options, Post, build_url, demo_request, method_text, new,
-  summary, with_bearer_token, with_body, with_header, with_headers, with_method,
+  Delete, EmptyUrl, Get, Head, InvalidTimeout, InvalidUrl, Options, Post,
+  build_url, demo_request, method_text, new, summary, validate,
+  with_bearer_token, with_body, with_header, with_headers, with_method,
   with_query_param, with_query_params, with_timeout,
 }
 import http_client/fetch.{
@@ -172,6 +173,46 @@ pub fn build_url_with_params_test() {
   |> with_query_param("t", "world")
   |> build_url
   |> should.equal("https://api.example.test?q=hello&t=world")
+}
+
+pub fn build_url_encodes_query_params_test() {
+  new("https://api.example.test")
+  |> with_query_param("q value", "a&b=c d")
+  |> build_url
+  |> should.equal("https://api.example.test?q%20value=a%26b%3Dc%20d")
+}
+
+// --- Validation ---
+
+pub fn validate_ok_test() {
+  new("https://api.example.test")
+  |> validate
+  |> should.equal(Ok(new("https://api.example.test")))
+}
+
+pub fn validate_empty_url_test() {
+  new("")
+  |> validate
+  |> should.equal(Error(EmptyUrl))
+}
+
+pub fn validate_invalid_scheme_test() {
+  new("ftp://api.example.test")
+  |> validate
+  |> should.equal(Error(InvalidUrl("ftp://api.example.test")))
+}
+
+pub fn validate_missing_host_test() {
+  new("https:///oops")
+  |> validate
+  |> should.equal(Error(InvalidUrl("https:///oops")))
+}
+
+pub fn validate_invalid_timeout_test() {
+  new("https://api.example.test")
+  |> with_timeout(0)
+  |> validate
+  |> should.equal(Error(InvalidTimeout(0)))
 }
 
 // --- Full pipeline ---
