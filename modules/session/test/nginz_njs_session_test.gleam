@@ -11,4 +11,3 @@ pub fn default_descriptor_summary_test() {
   |> model.summary
   |> should.equal("sid backend=shared_dict ttl=3600 same_site=Lax")
 }
-

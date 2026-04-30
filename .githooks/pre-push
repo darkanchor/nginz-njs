@@ -1,2 +1,20 @@
 #!/bin/sh
+# Format all Gleam modules. If formatting changes anything, block the push
+# so the changes can be committed first.
+set -e
+
 bun scripts/format.js
+
+CHANGED=$(git diff --name-only -- '**/*.gleam')
+
+if [ -n "$CHANGED" ]; then
+  echo ""
+  echo "[pre-push] gleam format modified files. Unformatted code cannot be pushed."
+  echo "[pre-push] Changed files:"
+  echo "$CHANGED"
+  echo ""
+  echo "[pre-push] Run: git add -u && git commit -m 'gleam format' && git push"
+  exit 1
+fi
+
+exit 0

@@ -22,10 +22,7 @@ pub fn body_if_success(resp: Response) -> Result(String, String) {
 /// Return `Ok(body)` for responses with the given status code,
 /// `Error(body)` otherwise.
 ///
-pub fn body_if_status(
-  resp: Response,
-  expected: Int,
-) -> Result(String, String) {
+pub fn body_if_status(resp: Response, expected: Int) -> Result(String, String) {
   case resp.status == expected {
     True -> Ok(resp.body)
     False -> Error(resp.body)

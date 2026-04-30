@@ -41,5 +41,3 @@ pub fn summary(descriptor: SessionDescriptor) -> String {
   <> " same_site="
   <> descriptor.cookie.same_site
 }
-
-

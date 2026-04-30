@@ -5,8 +5,10 @@ import http_client/client.{
   summary, with_bearer_token, with_body, with_header, with_headers, with_method,
   with_query_param, with_query_params, with_timeout,
 }
-import http_client/fetch.{Response, is_client_error, is_redirect,
-  is_server_error, is_success, status_text}
+import http_client/fetch.{
+  Response, is_client_error, is_redirect, is_server_error, is_success,
+  status_text,
+}
 import http_client/middleware
 import http_client/policy.{NoRetry, Retry, with_retry}
 import http_client/response.{body_if_status, body_if_success, body_or}
@@ -334,12 +336,13 @@ pub fn middleware_apply_single_test() {
 }
 
 pub fn middleware_stack_composes_left_to_right_test() {
-  let mw = middleware.stack([
-    middleware.bearer_token("tok"),
-    middleware.add_header("X-A", "1"),
-    middleware.add_header("X-B", "2"),
-    middleware.timeout_ms(999),
-  ])
+  let mw =
+    middleware.stack([
+      middleware.bearer_token("tok"),
+      middleware.add_header("X-A", "1"),
+      middleware.add_header("X-B", "2"),
+      middleware.timeout_ms(999),
+    ])
   let req = new("https://api.example.test")
   let result = middleware.apply(req, mw)
   result
@@ -371,11 +374,13 @@ pub fn middleware_pipeline_idiom_test() {
 
   let via_middleware =
     new("https://api.example.test")
-    |> middleware.apply(middleware.stack([
-      middleware.bearer_token("t"),
-      middleware.add_header("X-Foo", "bar"),
-      middleware.timeout_ms(1500),
-    ]))
+    |> middleware.apply(
+      middleware.stack([
+        middleware.bearer_token("t"),
+        middleware.add_header("X-Foo", "bar"),
+        middleware.timeout_ms(1500),
+      ]),
+    )
     |> summary
 
   via_builder |> should.equal(via_middleware)

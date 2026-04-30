@@ -11,4 +11,3 @@ pub fn default_config_summary_test() {
   |> model.summary
   |> should.equal("shared_dict policy=refresh_on_miss ttl=60")
 }
-

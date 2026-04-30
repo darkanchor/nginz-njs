@@ -22,7 +22,6 @@ pub fn stack(mws: List(Middleware)) -> Middleware {
 }
 
 /// --- Pre-built middlewares ---
-
 /// Inject a bearer token into the request's auth header.
 ///
 pub fn bearer_token(token: String) -> Middleware {

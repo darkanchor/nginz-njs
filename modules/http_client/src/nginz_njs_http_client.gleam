@@ -49,12 +49,13 @@ fn request_demo(r: HTTPRequest) -> Nil {
 }
 
 fn middleware_demo(r: HTTPRequest) -> Nil {
-  let mw = middleware.stack([
-    middleware.bearer_token("demo-token"),
-    middleware.add_header("X-Request-Id", "req-mw"),
-    middleware.json_content_type(),
-    middleware.timeout_ms(3000),
-  ])
+  let mw =
+    middleware.stack([
+      middleware.bearer_token("demo-token"),
+      middleware.add_header("X-Request-Id", "req-mw"),
+      middleware.json_content_type(),
+      middleware.timeout_ms(3000),
+    ])
   client.new("https://api.example.test/items")
   |> middleware.apply(mw)
   |> client.with_method(Post)

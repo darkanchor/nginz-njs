@@ -49,5 +49,3 @@ pub fn summary(config: CacheConfig) -> String {
   <> " ttl="
   <> int.to_string(config.ttl_seconds)
 }
-
-
