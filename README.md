@@ -131,15 +131,15 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 
 | Module | Purpose | Status |
 |---|---|---|
-| [`nginz_njs_http_client`](modules/http_client/) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
-| [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
-| [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
-| [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
-| [`nginz_njs_session`](modules/session/) | Session-state scaffold with reusable session modeling targeting njs built-in `ngx.shared` backing | scaffold |
-| [`nginz_njs_mlcache`](modules/mlcache/) | Two-level cache scaffold with reusable cache semantics targeting njs built-in `ngx.shared` backing | scaffold |
-| [`nginz_njs_response_transform`](modules/response_transform/) | Response/body-shaping scaffold for reusable transform plans | scaffold |
-| [`nginz_njs_webhook`](modules/webhook/) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
-| [`nginz_njs_metrics`](modules/metrics/) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
+| [`nginz_njs_http_client`](modules/http_client/README.md) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
+| [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | complete |
+| [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
+| [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
+| [`nginz_njs_session`](modules/session/README.md) | Session-state scaffold with reusable session modeling targeting njs built-in `ngx.shared` backing | scaffold |
+| [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache scaffold with reusable cache semantics targeting njs built-in `ngx.shared` backing | scaffold |
+| [`nginz_njs_response_transform`](modules/response_transform/README.md) | Response/body-shaping scaffold for reusable transform plans | scaffold |
+| [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
+| [`nginz_njs_metrics`](modules/metrics/README.md) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
 
 ## Setup
 
@@ -266,6 +266,7 @@ nginz-njs/
 │   ├── authz/              ← directory name; Gleam package is nginz_njs_authz
 │   │   ├── gleam.toml      ← package config (name, version, ngs dependency)
 │   │   ├── nginx.conf      ← example nginx configuration
+│   │   ├── README.md       ← exports, nginx config examples, phased plan, checklist
 │   │   ├── src/            ← Gleam source modules
 │   │   ├── test/           ← Gleam unit tests (gleam test)
 │   │   ├── tests/          ← bun integration tests against real nginx
@@ -295,6 +296,7 @@ nginz-njs/
 modules/<name>/
 ├── gleam.toml        package name "nginz_njs_<name>", version, ngs dependency
 ├── nginx.conf        example nginx config showing the module in use
+├── README.md         exports, nginx config examples, phased plan, verification checklist
 ├── src/
 │   ├── nginz_njs_<name>.gleam  final njs adapter; exports() returns the JsObject for nginx
 │   └── <name>/                 reusable library modules with clean `pub` interfaces
@@ -305,8 +307,7 @@ modules/<name>/
 │   └── <scenario>/
 │       ├── nginx.conf  scenario-specific nginx config
 │       └── do.test.js  bun integration test
-└── docs/
-    └── README.md     design rationale, limitations, operational guidance
+└── docs/             design notes, architecture decisions, operational guidance
 ```
 
 ## Authoring a new module

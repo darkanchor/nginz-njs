@@ -2,16 +2,142 @@
 
 Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority Tier 1 module.
 
-## Roadmap position
-
-`http_client` is the foundation module in `ROADMAP.md`. It makes `workflow` and other upstream-calling modules more ergonomic without introducing any native dependency.
-
 ## Design goals
 
 - keep request construction pure and typed
 - make auth headers, timeouts, method selection, and body first-class values
 - keep nginx effects at the edge and core request shaping in Gleam
 - the pure `Request` model is the stable input to all execution helpers
+
+## Exports
+
+| Handler | nginx directive | Description |
+|---|---|---|
+| `main.demo` | `js_content` | Returns a rendered demo request summary |
+| `main.fetch_demo` | `js_content` | Real `ngx.fetch()` to a fixture upstream |
+| `main.request_demo` | `js_content` | Full builder pipeline exercising headers, body, query params, auth, timeout |
+| `main.middleware_demo` | `js_content` | Stacked middleware pipeline (bearer token, headers, content-type, timeout) |
+| `main.retry_demo` | `js_content` | Fetch with retry policy (max 3 attempts) |
+
+## nginx configuration
+
+```nginx
+http {
+    js_engine qjs;
+    js_path "njs/";
+    js_import main from app.js;
+
+    server {
+        listen 8888;
+
+        location /demo            { js_content main.demo; }
+        location /fetch-demo      { js_content main.fetch_demo; }
+        location /request-demo    { js_content main.request_demo; }
+        location /middleware-demo { js_content main.middleware_demo; }
+        location /retry-demo      { js_content main.retry_demo; }
+    }
+}
+```
+
+## Pure request model
+
+`http_client/client.gleam` provides a typed `Request` value with:
+
+- `method` — typed `Method` sum type (Get, Head, Post, Put, Patch, Delete, Options)
+- `url` — target URL string
+- `headers` — list of `(key, value)` pairs for arbitrary request headers
+- `auth_header` — convenience field for typed auth injection (e.g., `"Bearer <token>"`)
+- `body` — optional string body
+- `query_params` — list of `(key, value)` pairs appended to the URL at fetch time
+- `timeout_ms` — optional timeout hint
+
+Builder helpers: `with_method`, `with_header`, `with_headers`, `with_bearer_token`, `with_body`, `with_query_param`, `with_query_params`, `with_timeout`.
+
+`build_url` assembles the URL with query params. `summary` provides deterministic string rendering for testing.
+
+## Runtime execution
+
+`http_client/fetch.gleam` provides `execute(request)` → `Promise(Result(Response, ClientError))`:
+
+- Converts the pure `Request` into an njs `Request`:
+  - custom headers + auth header are merged into the runtime `Headers` object
+  - optional body is converted to a `Buffer` via `from_string(body, Utf8)`
+  - query params are appended to the URL
+- Performs `ngx.fetch_request` and extracts `status` + `body` text
+- Catches runtime failures and wraps them as `FetchFailed(reason)`
+
+`Response` means the HTTP exchange completed and produced a response, even if the status is not 2xx.
+
+## Error model
+
+```gleam
+pub type ClientError {
+  FetchFailed(reason: String)      // transport/runtime failure in the fetch path
+  Timeout(timeout_ms: Int)         // client-observed timeout
+  InvalidUrl(url: String)          // malformed or unsupported URL
+  InvalidRequest(reason: String)   // invalid request configuration
+}
+```
+
+## Response helpers
+
+```gleam
+pub fn is_success(resp: Response) -> Bool        // 2xx
+pub fn is_client_error(resp: Response) -> Bool   // 4xx
+pub fn is_server_error(resp: Response) -> Bool   // 5xx
+pub fn is_redirect(resp: Response) -> Bool       // 3xx
+pub fn status_text(resp: Response) -> String     // e.g., "OK", "Not Found"
+```
+
+`http_client/response.gleam` provides body extraction helpers:
+
+```gleam
+body_or(response, "fallback")         // body if 2xx, else fallback
+body_if_success(response)              // Ok(body) if 2xx, Error(body) otherwise
+body_if_status(response, 201)          // Ok(body) if status matches
+```
+
+## Policy layer
+
+`http_client/policy.gleam` provides retry composition around `execute()`:
+
+```gleam
+import http_client/policy.{Retry, execute_with_policy, new, with_retry}
+
+let policy = new() |> with_retry(Retry(max_attempts: 3))
+use result <- promise.await(execute_with_policy(req, policy))
+```
+
+- `RetryPolicy` — `NoRetry` or `Retry(max_attempts)`
+- Immediate retry only (no backoff delay) — njs timer callbacks run outside request context and break `ngx.fetch()`
+- `timeout_ms` is enforced by the execution layer via promise racing
+
+## Middleware
+
+`http_client/middleware.gleam` provides composable request transformation:
+
+```gleam
+import http_client/middleware.{add_header, bearer_token, json_content_type, stack, timeout_ms}
+
+let mw = stack([
+  bearer_token("my-token"),
+  add_header("X-Request-Id", "req-001"),
+  json_content_type(),
+  timeout_ms(5000),
+])
+
+let req = new("https://api.example.test")
+  |> middleware.apply(mw)
+  |> client.with_method(Post)
+```
+
+- `Middleware` — pure `fn(Request) -> Request`
+- `stack` — composes middlewares left-to-right
+- Pre-built: `bearer_token`, `add_header`, `json_content_type`, `timeout_ms`
+
+## Composition with other modules
+
+`workflow/pipeline.gleam` consumes `http_client/fetch` as a Gleam building block — `fetch_step` delegates to `execute()` and maps all `ClientError` variants to `Failed(reason)` strings. Future modules (`authz`, `webhook`) should follow the same pattern: import `http_client/fetch` for execution, `http_client/client` for request building, and optionally `http_client/policy` for retry semantics.
 
 ## What is implemented (Phases 1–5 complete)
 
@@ -24,50 +150,25 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 **`http_client/fetch.gleam`** — execution layer
 - `Response(status: Int, body: String)` — typed HTTP response
 - `ClientError` — `FetchFailed`, `Timeout`, `InvalidUrl`, `InvalidRequest`
-- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)` and now emits `FetchFailed`, `Timeout`, `InvalidUrl`, and `InvalidRequest`
+- `execute` — maps pure `Request` → njs fetch → `Result(Response, ClientError)`
 - Response helpers: `is_success`, `is_client_error`, `is_server_error`, `is_redirect`, `status_text`
 
 **`http_client/policy.gleam`** — retry composition
-- `RetryPolicy` — `NoRetry` or `Retry(max_attempts)` (immediate only)
-- `Policy` — composable execution policy wrapper
-- `execute_with_policy` — runs `execute()` with retry semantics
 
 **`http_client/middleware.gleam`** — composable request transformations
-- `Middleware` — pure `fn(Request) -> Request`
-- `stack` — left-to-right composition
-- Pre-built: `bearer_token`, `add_header`, `json_content_type`, `timeout_ms`
 
 **`http_client/response.gleam`** — body extraction helpers
-- `body_or`, `body_if_success`, `body_if_status`
 
 **`nginz_njs_http_client.gleam`** — njs entry point (5 handlers)
-- `demo`, `fetch_demo`, `request_demo`, `middleware_demo`, `retry_demo`
 
-**Integration tests** — 5 scenarios with stock nginx, no native deps.
+**Integration tests** — 8 scenarios with stock nginx, no native deps.
 
-## Core abstractions
+## Limitations
 
-The architectural rule for this module: request construction and response interpretation stay pure; only `ngx.fetch()` execution touches nginx/njs runtime effects.
-
-## Composition with other modules
-
-`workflow/pipeline.gleam` consumes `http_client/fetch` as a building block — `fetch_step` delegates to `execute()` and maps all `ClientError` variants. This is the intended pattern: `http_client` owns execution; downstream modules own orchestration.
-
-## Scripted core vs optional native integration
-
-### Scripted core (all implemented)
-
-- request construction, headers, body, query params
-- auth/header shaping
-- response classification
-- builder pipeline pattern
-
-### Future refinement areas
-
-- retry policy wrappers (`NoRetry`, `ConstantBackoff`, `ExponentialBackoff`)
-- timeout enforcement
-- middleware-style auth/header injection
-- JSON body helpers
+- only a text-response fetch path is implemented (no streaming or binary body access)
+- retry is immediate-only (no backoff delay) — njs timer context restrictions prevent `ngx.fetch()` after `setTimeout`
+- timeout is client-observed and does not abort an already in-flight upstream fetch
+- no circuit breaker logic or connection pooling
 
 ## Phased implementation plan
 
@@ -105,13 +206,6 @@ The architectural rule for this module: request construction and response interp
 - [x] add middleware-style composition (`Middleware`, `stack`)
 - [x] add response body helpers (`body_or`, `body_if_success`, `body_if_status`)
 - [x] examples showing pure request construction reused across multiple handlers
-
-## TDD plan
-
-- [x] unit-test request builders, validation, and pure model transformations (40 tests)
-- [x] integration test for real `ngx.fetch()` path, validation failures, and timeout behavior (8 scenarios)
-- [x] retries and policy wrappers behind their own test cases
-- [x] integration tests distinguish stock-nginx behavior from native-backed scenarios
 
 ## Verification checklist
 

@@ -7,117 +7,231 @@ Policy-based authorization for nginx written in Gleam. Rules are pure functions;
 - A single `Decision` type (`Allow` | `Deny(reason)`) flows through every rule — no exceptions, no side channels
 - Rules are first-class values: `Rule = fn(Context) -> Decision`
 - Combinators (`all_of`, `any_of`, `not_`) let you build arbitrary policy trees from atomic rules
-- The native jwt module (optional) handles cryptographic verification; this module only reads the resulting nginx variables and applies claim-based policy in Gleam
+- The native jwt module (optional) handles cryptographic verification; this module reads the resulting nginx variables and applies claim-based policy in Gleam
 - Deny reasons are always explicit strings — operators can log them; callers can inspect them in tests
+
+## Exports
+
+| Handler | nginx directive | Description |
+|---|---|---|
+| `main.check` | `js_content` | Method whitelist; returns 204 or 403 |
+| `main.jwt_check` | `js_content` | Reads `$jwt_claim_*` vars and checks role claim |
+| `main.remote_check` | `js_content` | POSTs to OPA-compatible endpoint; returns 204 or 403 |
+| `main.cached_remote_check` | `js_content` | `remote_check` with `ngx.shared` cache keyed by Bearer token SHA-256 |
+| `main.enriched_check` | `js_content` | `check` + sets `X-Authz-Status` response header |
+| `main.enriched_jwt_check` | `js_content` | `jwt_check` + sets `X-Authz-Status` and `X-Authz-<Claim>` headers |
+| `main.enriched_remote_check` | `js_content` | `remote_check` + sets `X-Authz-Status` response header |
+
+## nginx configuration
+
+### Basic method check
+
+```nginx
+http {
+    js_engine qjs;
+    js_path "njs/";
+    js_import main from app.js;
+    server {
+        listen 8888;
+        location /api/ { js_content main.check; }
+        location /admin/ {
+            jwt_secret "your-secret";
+            jwt_claim $jwt_claim_role role;
+            js_content main.jwt_check;
+        }
+    }
+}
+```
+
+### Remote OPA decision point
+
+```nginx
+location /api/ {
+    set $authz_opa_url http://opa.internal:8181/v1/data/authz/allow;
+    js_content main.remote_check;
+}
+```
+
+Sends `{"input":{"method":"…","path":"…","remote_addr":"…"}}`, expects `{"result":{"allow":true|false}}`.
+
+### Cached remote check
+
+```nginx
+js_shared_dict_zone zone=authz_cache:10m timeout=1h;
+…
+location /api/ {
+    set $authz_opa_url  http://opa.internal:8181/v1/data/authz/allow;
+    set $authz_cache_ttl 300;   # seconds; default 300 if unset
+    js_content main.cached_remote_check;
+}
+```
+
+`timeout=` on `js_shared_dict_zone` is required for per-key TTL.
+
+### Downstream header injection with auth_request
+
+```nginx
+location /protected/ {
+    auth_request     /auth;
+    auth_request_set $authz_status $upstream_http_x_authz_status;
+    auth_request_set $authz_role   $upstream_http_x_authz_role;
+    proxy_set_header X-User-Role   $authz_role;
+    proxy_pass       http://backend;
+}
+location = /auth {
+    internal;
+    set $authz_opa_url http://opa.internal:8181/v1/data/authz/allow;
+    js_content main.enriched_remote_check;
+}
+```
+
+## Policy model
+
+Rules are functions `fn(Context) -> Decision`. Combine with `all_of`, `any_of`, `not_`:
+
+```gleam
+import authz/policy.{all_of, any_of, claim_contains_one_of, method_in, path_prefix, query_param_one_of}
+
+let api_policy = all_of([
+  method_in(["GET", "POST"]),
+  path_prefix("/api"),
+  any_of([claim_contains_one_of("role", ["admin", "user"])]),
+  query_param_one_of("version", ["v1", "v2"]),
+])
+```
+
+`evaluate(ctx, rules)` short-circuits on the first `Deny`.
+
+### Rule combinators
+
+| Function | Description |
+|---|---|
+| `method_in(methods)` | Allow if request method is in the list |
+| `path_prefix(prefix)` | Allow if request path starts with prefix |
+| `require_header(name, value)` | Allow if header equals value exactly |
+| `header_one_of(name, values)` | Allow if header is one of the values |
+| `has_claim(key, value)` | Allow if claim equals value exactly |
+| `claim_one_of(key, values)` | Allow if claim is one of the values |
+| `claim_contains(key, value)` | Allow if comma-separated claim contains value as a segment |
+| `claim_contains_one_of(key, values)` | Allow if comma-separated claim contains any value from the list |
+| `query_param(key, value)` | Allow if query parameter equals value exactly |
+| `query_param_one_of(key, values)` | Allow if query parameter is one of the values |
+| `all_of(rules)` | Allow only if every rule allows (AND) |
+| `any_of(rules)` | Allow if at least one rule allows (OR) |
+| `not_(rule)` | Invert a rule |
+
+### Async rules
+
+```gleam
+import authz/policy.{AsyncRule, async_evaluate, to_async}
+
+// Lift sync rules and mix with async ones
+let rules: List(AsyncRule) = [
+  to_async(method_in(["GET"])),
+  to_async(path_prefix("/api")),
+  remote.opa_allow(_, endpoint, 2000),  // already AsyncRule
+]
+async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
+```
+
+### Library modules
+
+| Module | Purpose |
+|---|---|
+| `authz/policy` | Core types (`Context`, `Decision`, `Rule`, `AsyncRule`), all combinators |
+| `authz/claims` | `from_vars(vars, names)` — extracts `$jwt_claim_<name>` nginx vars into claims dict |
+| `authz/query` | `from_vars(vars, names)` — extracts `$arg_<name>` nginx vars into query dict |
+| `authz/remote` | `opa_allow(ctx, endpoint, timeout_ms)` — async OPA-compatible remote check via `http_client` |
+| `authz/cache` | `lookup/store` — `ngx.shared`-backed decision cache keyed by Bearer token SHA-256 |
+| `authz/enrich` | `inject_status/inject_claims` — sets `X-Authz-*` response headers |
 
 ## What is implemented
 
 **`authz/policy.gleam`**
-- `Context` — method, path, remote_addr, headers, claims
+- `Context` — method, path, remote_addr, headers, claims, query
+- `Rule = fn(Context) -> Decision` and `AsyncRule = fn(Context) -> Promise(Decision)`
 - `evaluate` — short-circuits on first `Deny`
-- Atomic rules: `method_in`, `path_prefix`, `require_header`, `has_claim`
+- `async_evaluate` — async short-circuit evaluation; `to_async` lifts a sync Rule
+- Atomic rules: `method_in`, `path_prefix`, `require_header`, `header_one_of`, `has_claim`, `claim_one_of`, `claim_contains`, `claim_contains_one_of`, `query_param`, `query_param_one_of`
 - Combinators: `all_of`, `any_of`, `not_`
 
-**`nginz_njs_authz.gleam`** (njs entry point)
-- `check` — basic method allowlist; returns 204 / 403
-- `jwt_check` — reads `$jwt_claim_role` set by the native jwt module; applies role-based policy
+**`authz/claims.gleam`** — `from_vars` reads any list of `jwt_claim_*` nginx variables
+
+**`authz/query.gleam`** — `from_vars` reads any list of `arg_*` nginx variables
+
+**`authz/remote.gleam`** — `opa_allow` POSTs context to an OPA-compatible endpoint via `http_client`
+
+**`authz/cache.gleam`** — `lookup`/`store` backed by `ngx.shared` with per-key TTL, keyed by SHA-256 of the Bearer token
+
+**`authz/enrich.gleam`** — `inject_status` and `inject_claims` set `X-Authz-*` response headers
+
+**`nginz_njs_authz.gleam`** (njs entry point) — 7 handler exports covering all combinations
 
 **Integration tests**
 - `tests/basic/` — method allowlist, no native deps
-- `tests/jwt/` — full JWT flow: native module verifies HS256 signature, njs checks role claim (`make` required)
+- `tests/opa/` — remote OPA check, no native deps
+- `tests/cache/` — shared-dict cache, no native deps
+- `tests/enrich/` — header injection, no native deps
+- `tests/jwt/` — full JWT flow: native module verifies HS256, njs checks role (`make` required)
 
-## Roadmap position
+## Limitations
 
-`authz` is strategically important, but it should not lead with native-coupled features. The high-value path is to make the pure policy language strong first, then layer in nginx adapters, then add optional native-assisted or subrequest-assisted identity inputs.
-
-This keeps the module useful even when no native `nginz` modules are present, and it avoids overfitting the public API to today's demo setup.
-
-## Core abstractions
-
-- `Context` — normalized request facts: method, path, remote address, headers, claims, and later query params or derived identity attributes
-- `Decision` — the only policy result type; policy logic should always return a value, never throw or write directly to nginx
-- `Rule = fn(Context) -> Decision` — the basic unit of composition
-- `AsyncRule = fn(Context) -> Promise(Decision)` — a later adapter type for effectful policy checks without contaminating the sync core
-- Combinators such as `all_of`, `any_of`, and `not_` — these are the real product surface, not the demo handlers
-
-The design rule is simple: gather facts at the edge, evaluate policy in pure Gleam, then adapt the resulting `Decision` back into nginx behavior.
-
-## Scripted core vs optional native integration
-
-### Scripted core
-
-- Request matching by method, path, header, query, remote address, and claims
-- Claim-to-role mapping and policy composition
-- Deny reason shaping and operator-facing explainability
-- Subrequest or fetch adapters that translate remote decisions into `Decision`
-
-### Optional native integration
-
-- `jwt` for signature verification and claim extraction into nginx variables
-- future shared-memory or cache primitives if token introspection or attribute caching becomes necessary
-
-Native modules are not the architecture here. They are capability providers that can enrich the context seen by the pure policy layer.
-
-Cross-module direction: remote decision points should later compose `http_client` for transport and `mlcache` for caching, rather than embedding bespoke fetch or cache layers inside `authz` itself.
+- **No runtime policy reload.** Policy rules are compiled into the njs bundle. A policy change requires rebuilding and `nginx -s reload`. Hot-patching is not supported by the njs module system.
+- `jwt_check` / `enriched_jwt_check` depend on `$jwt_claim_*` variables set by the nginz native JWT module. Signature verification is the native layer's job.
 
 ## Phased implementation plan
 
-### Phase 1 — strengthen the pure policy language
+### Phase 1 — strengthen the pure policy language ✓
 
-Goal: make the composable rule core useful before adding more adapters.
+- [x] `claim_one_of(key, values)` and `header_one_of(key, values)`
+- [x] `claim_contains(key, value)` and `claim_contains_one_of(key, values)` — multi-value comma-separated claims
+- [x] `query_param(key, value)` and `query_param_one_of(key, values)` — query string rules
+- [x] `Context.query` field populated from `$arg_*` nginx variables via `authz/query.from_vars`
+- [ ] `path_matches(pattern)` — regex/glob path matching (needs regex support)
+- [ ] `remote_addr_in(cidrs)` — IP allowlist/denylist (needs CIDR parsing)
+- [ ] focused examples showing nested `all_of` / `any_of` policy trees
 
-- [ ] extend `Context` with query params and a cleaner request-shape boundary
-- [ ] add `path_matches(pattern)` for richer path matching
-- [ ] add `remote_addr_in(cidrs)` for allowlist and denylist style policies
-- [ ] add `claim_one_of(key, values)` and `header_one_of(key, values)` for multi-value matching
-- [ ] add focused examples showing nested `all_of` / `any_of` policy trees
+### Phase 2 — make decisions richer without losing purity ✓ (partial)
 
-### Phase 2 — make decisions richer without losing purity
+- [x] `X-Authz-Status` and `X-Authz-<Claim>` response headers via `authz/enrich`
+- [x] `apply_decision(r, decision, log_prefix)` nginx adapter in the entry point
+- [ ] evolve `Deny` to carry an HTTP status code (401 vs 403 semantics)
+- [ ] `deny_401`, `deny_403` pure helpers
 
-Goal: keep decision semantics in the core instead of scattering HTTP status logic across handlers.
+### Phase 3 — async policy adapters ✓ (partial)
 
-- [ ] evolve `Deny` to carry status and reason
-- [ ] add pure helpers such as `deny_401`, `deny_403`, `with_reason`, and `with_status`
-- [ ] add a thin `return_denied(r, decision)` nginx adapter that renders the policy result
-- [ ] optionally propagate decision metadata via response headers for logging and debugging
+- [x] `AsyncRule = fn(Context) -> Promise(Decision)` type alias in `policy.gleam`
+- [x] `async_evaluate(ctx, rules)` — async short-circuit evaluation
+- [x] `to_async(rule)` — lifts a sync `Rule` into an `AsyncRule`
+- [x] `authz/remote.opa_allow` — async OPA-compatible external check via `http_client`
+- [x] integration test coverage for external auth service (`tests/opa/`, `tests/cache/`)
+- [ ] `auth_request_step(path)` subrequest adapter — maps nginx subrequest result into `Decision`
 
-### Phase 3 — add async policy adapters
+### Phase 4 — compose policy outputs in nginx ✓
 
-Goal: support external or delegated authorization checks without making the base rule language effectful.
-
-- [ ] define `AsyncRule = fn(Context) -> Promise(Decision)` and `evaluate_async`
-- [ ] add adapters between `Rule` and `AsyncRule`
-- [ ] add `auth_request_step(path)` that maps subrequest results into `Decision`
-- [ ] add integration coverage for an external auth service flow
-
-### Phase 4 — make policy outputs easy to compose in nginx
-
-Goal: let `authz` feed routing, logging, and upstream behavior cleanly.
-
-- [ ] expose `js_set`-friendly outputs for decision, status, and reason
-- [ ] document reusable recipes for RBAC, path+method gating, and claim-based policy
-- [ ] document the optional `jwt` wiring without making it look mandatory
-- [ ] prepare the policy surface for later use with shared state or introspection caches if that becomes valuable
+- [x] `X-Authz-Status` / `X-Authz-<Claim>` headers for `auth_request` enrichment flows
+- [x] `ngx.shared` decision cache (`authz/cache`) for introspection result reuse
+- [x] `cached_remote_check` handler wiring cache + OPA + Bearer token extraction
+- [ ] reusable RBAC recipe documentation (path+method+role policy tree)
+- [ ] document optional jwt module wiring end-to-end
 
 ## TDD plan
 
-- [ ] unit-test each new atomic rule in isolation
-- [ ] unit-test combinator nesting and short-circuit behavior
-- [ ] unit-test decision helper semantics before adding nginx rendering helpers
-- [ ] add `tests/basic/` scenarios for request-to-context extraction correctness
-- [ ] keep native-backed JWT scenarios as optional proof that the module composes with `nginz`, not as the baseline contract
-
-## Atomic commit strategy
-
-- [ ] `authz: extend context and add richer rule primitives`
-- [ ] `authz: add structured deny decisions and nginx rendering helpers`
-- [ ] `authz: add async rule evaluation and subrequest adapters`
-- [ ] `docs: document authz composition patterns and optional jwt wiring`
+- [x] unit-test each atomic rule in isolation
+- [x] unit-test combinator nesting and short-circuit behavior
+- [x] unit-test `async_evaluate` / `to_async` with sync rules
+- [x] unit-test `query_param` and `query_param_one_of`
+- [ ] unit-test decision helper semantics when `Deny` carries HTTP status
+- [ ] `tests/basic/` scenario for request-to-context extraction correctness
+- [x] native JWT scenario as optional proof of composition with nginz (`tests/jwt/`)
 
 ## Verification checklist
 
-- [ ] `bun scripts/test.js authz` — all 17 unit tests pass
-- [ ] `bun test modules/authz/tests/basic/do.test.js` — method allowlist integration passes
-- [ ] `bun test modules/authz/tests/jwt/do.test.js` — JWT integration passes (`make` required)
+- [x] `bun scripts/test.js authz` — 43 unit tests pass
+- [x] `bun test modules/authz/tests/basic/do.test.js` — method allowlist passes
+- [x] `bun test modules/authz/tests/opa/do.test.js` — remote OPA check passes
+- [x] `bun test modules/authz/tests/cache/do.test.js` — shared-dict cache passes
+- [x] `bun test modules/authz/tests/enrich/do.test.js` — header injection passes
+- [x] `bun test modules/authz/tests/jwt/do.test.js` — JWT integration passes (`make` required)
 - [ ] Manual: configure a real RBAC policy, hit with admin/user/guest tokens, verify log output
 - [ ] Load test: 10k req/s baseline through the `check` handler to measure njs overhead

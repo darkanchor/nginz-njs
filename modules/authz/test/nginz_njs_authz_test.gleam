@@ -1,8 +1,11 @@
 import authz/policy.{
-  type Context, Allow, Context, Deny, all_of, any_of, claim_one_of, evaluate,
-  has_claim, header_one_of, method_in, not_, path_prefix, require_header,
+  type Context, Allow, Context, Deny, all_of, any_of, async_evaluate,
+  claim_contains, claim_contains_one_of, claim_one_of, evaluate, has_claim,
+  header_one_of, method_in, not_, path_prefix, query_param, query_param_one_of,
+  require_header, to_async,
 }
 import gleam/dict
+import gleam/javascript/promise
 import gleeunit
 import gleeunit/should
 
@@ -17,6 +20,7 @@ fn ctx(method: String, path: String) -> Context {
     remote_addr: "127.0.0.1",
     headers: dict.new(),
     claims: dict.new(),
+    query: dict.new(),
   )
 }
 
@@ -219,4 +223,163 @@ pub fn evaluate_short_circuits_test() {
   ctx("DELETE", "/api")
   |> evaluate([method_in(["GET"]), path_prefix("/anything")])
   |> should.equal(Deny("method not allowed: DELETE"))
+}
+
+// claim_contains — multi-value comma-separated claim
+
+pub fn claim_contains_single_value_allow_test() {
+  let ctx_c =
+    Context(..ctx("GET", "/api"), claims: dict.from_list([#("role", "admin")]))
+  ctx_c
+  |> evaluate([claim_contains("role", "admin")])
+  |> should.equal(Allow)
+}
+
+pub fn claim_contains_multi_value_allow_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "admin,user")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains("role", "user")])
+  |> should.equal(Allow)
+}
+
+pub fn claim_contains_multi_value_allow_first_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "admin,user,viewer")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains("role", "admin")])
+  |> should.equal(Allow)
+}
+
+pub fn claim_contains_with_spaces_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "admin, user")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains("role", "user")])
+  |> should.equal(Allow)
+}
+
+pub fn claim_contains_deny_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "viewer,guest")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains("role", "admin")])
+  |> should.equal(Deny("claim does not contain: role=admin"))
+}
+
+pub fn claim_contains_missing_test() {
+  ctx("GET", "/api")
+  |> evaluate([claim_contains("role", "admin")])
+  |> should.equal(Deny("missing required claim: role"))
+}
+
+// claim_contains_one_of
+
+pub fn claim_contains_one_of_allow_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "viewer,editor")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains_one_of("role", ["admin", "editor"])])
+  |> should.equal(Allow)
+}
+
+pub fn claim_contains_one_of_deny_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api"),
+      claims: dict.from_list([#("role", "viewer,guest")]),
+    )
+  ctx_c
+  |> evaluate([claim_contains_one_of("role", ["admin", "user"])])
+  |> should.equal(Deny("claim value mismatch: role"))
+}
+
+pub fn claim_contains_one_of_missing_test() {
+  ctx("GET", "/api")
+  |> evaluate([claim_contains_one_of("role", ["admin", "user"])])
+  |> should.equal(Deny("missing required claim: role"))
+}
+
+// query_param
+
+pub fn query_param_allow_test() {
+  let ctx_q =
+    Context(..ctx("GET", "/search"), query: dict.from_list([#("sort", "asc")]))
+  ctx_q
+  |> evaluate([query_param("sort", "asc")])
+  |> should.equal(Allow)
+}
+
+pub fn query_param_deny_mismatch_test() {
+  let ctx_q =
+    Context(..ctx("GET", "/search"), query: dict.from_list([#("sort", "desc")]))
+  ctx_q
+  |> evaluate([query_param("sort", "asc")])
+  |> should.equal(Deny("query param value mismatch: sort"))
+}
+
+pub fn query_param_deny_missing_test() {
+  ctx("GET", "/search")
+  |> evaluate([query_param("sort", "asc")])
+  |> should.equal(Deny("missing required query param: sort"))
+}
+
+pub fn query_param_one_of_allow_test() {
+  let ctx_q =
+    Context(..ctx("GET", "/search"), query: dict.from_list([#("sort", "desc")]))
+  ctx_q
+  |> evaluate([query_param_one_of("sort", ["asc", "desc"])])
+  |> should.equal(Allow)
+}
+
+pub fn query_param_one_of_deny_test() {
+  let ctx_q =
+    Context(
+      ..ctx("GET", "/search"),
+      query: dict.from_list([#("sort", "random")]),
+    )
+  ctx_q
+  |> evaluate([query_param_one_of("sort", ["asc", "desc"])])
+  |> should.equal(Deny("query param value mismatch: sort"))
+}
+
+// async_evaluate + to_async
+
+pub fn async_evaluate_all_allow_test() {
+  ctx("GET", "/api")
+  |> async_evaluate([
+    to_async(method_in(["GET"])),
+    to_async(path_prefix("/api")),
+  ])
+  |> promise.map(fn(d) { d |> should.equal(Allow) })
+}
+
+pub fn async_evaluate_short_circuit_test() {
+  ctx("POST", "/api")
+  |> async_evaluate([
+    to_async(method_in(["GET"])),
+    to_async(path_prefix("/api")),
+  ])
+  |> promise.map(fn(d) { d |> should.equal(Deny("method not allowed: POST")) })
+}
+
+pub fn async_evaluate_empty_test() {
+  ctx("GET", "/api")
+  |> async_evaluate([])
+  |> promise.map(fn(d) { d |> should.equal(Allow) })
 }

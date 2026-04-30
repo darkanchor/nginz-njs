@@ -21,7 +21,9 @@
       "Bash(make *)",
       "Bash(NGINX_BIN=/usr/bin/nginx bun scripts/build.js authz)",
       "Bash(xargs ls *)",
-      "Bash(chmod +x /home/kaiwu/Documents/gitea/nginz-njs/.githooks/pre-push)"
+      "Bash(chmod +x /home/kaiwu/Documents/gitea/nginz-njs/.githooks/pre-push)",
+      "Bash(xargs sed *)",
+      "Bash(KEEP_LOGS=1 bun test modules/authz/tests/cache/do.test.js)"
     ]
   }
 }

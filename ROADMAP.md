@@ -69,20 +69,25 @@ Roadmap integration:
 
 #### `nginz_njs_authz` — policy / authorization engine
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** `lua-resty-casbin`  
-**Blockers:** partial — JWT claim variables require the native `jwt` module in the binary (included in default `NGINZ_MODULES`)
+**Blockers:** `enriched_jwt_check` / `jwt_check` require the native `jwt` module (included in default `NGINZ_MODULES`); all other handlers work with standard nginx
 
-FP-composable access control. Method, path, header, and JWT claim rules combined with `all_of` / `any_of` / `not_`. Can call `ngx.fetch()` for external OPA/Cedar decision point.
+FP-composable access control. Method, path, header, and JWT claim rules combined with `all_of` / `any_of` / `not_`. Remote OPA/Cedar decision via `http_client`. Result cache in `ngx.shared` by Bearer token hash. Downstream header injection for `auth_request` enrichment flows.
 
 Why scripted:
 - Policy rules change frequently — version-controlled scripts are the right artifact, not recompiled binaries
 - Heavy on branching and business logic; complements native auth primitives rather than replacing them
 - A natural "programmable gateway" use case
 
-Roadmap integration:
-- Full JWT claim access requires `jwt` native module
-- Can cache introspection results per token hash in the njs built-in `ngx.shared`
+Shipped:
+- Multi-value claim rules: `claim_contains`, `claim_contains_one_of`
+- `authz/claims.from_vars` — reads any list of `jwt_claim_*` nginx vars into a claims dict
+- `authz/remote.opa_allow` — async OPA-compatible remote decision via `http_client`
+- `authz/cache` — `ngx.shared`-backed decision cache keyed by SHA-256 of the Bearer token
+- `authz/enrich` — `X-Authz-Status` / `X-Authz-<Claim>` header injection for `auth_request` flows
+- 7 njs handler exports covering all combinations of the above
+- Remaining open: no runtime policy reload (requires nginx reload; inherent to njs bundle model)
 
 ### Tier 2 — depends on or pairs with native work
 
@@ -173,7 +178,7 @@ Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock pro
 
 ### Sprint 3 — policy and enrichment
 
-7. `nginz_njs_authz` — complete JWT claim integration; add introspection cache path
+7. ~~`nginz_njs_authz` — complete JWT claim integration; add introspection cache path~~ ✓ done
 8. `response_transform` — body filter library
 9. `webhook` — HMAC signing and callback verification
 

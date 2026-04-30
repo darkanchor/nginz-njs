@@ -1,4 +1,5 @@
 import gleam/dict.{type Dict}
+import gleam/javascript/promise.{type Promise}
 import gleam/list
 import gleam/string
 
@@ -14,11 +15,17 @@ pub type Context {
     remote_addr: String,
     headers: Dict(String, String),
     claims: Dict(String, String),
+    query: Dict(String, String),
   )
 }
 
 pub type Rule =
   fn(Context) -> Decision
+
+/// An async rule for effectful checks (remote auth, introspection).
+/// Compose with `async_evaluate`; lift a sync Rule with `to_async`.
+pub type AsyncRule =
+  fn(Context) -> Promise(Decision)
 
 pub fn evaluate(ctx: Context, rules: List(Rule)) -> Decision {
   list.fold_until(rules, Allow, fn(_, rule) {
@@ -27,6 +34,26 @@ pub fn evaluate(ctx: Context, rules: List(Rule)) -> Decision {
       Deny(r) -> list.Stop(Deny(r))
     }
   })
+}
+
+/// Evaluate a list of async rules in sequence, short-circuiting on the
+/// first Deny. Sync rules can be lifted with `to_async`.
+pub fn async_evaluate(
+  ctx: Context,
+  rules: List(AsyncRule),
+) -> Promise(Decision) {
+  list.fold(rules, promise.resolve(Allow), fn(acc, rule) {
+    use prev <- promise.await(acc)
+    case prev {
+      Deny(_) -> promise.resolve(prev)
+      Allow -> rule(ctx)
+    }
+  })
+}
+
+/// Lift a sync Rule into an AsyncRule.
+pub fn to_async(rule: Rule) -> AsyncRule {
+  fn(ctx: Context) -> Promise(Decision) { promise.resolve(rule(ctx)) }
 }
 
 pub fn method_in(allowed: List(String)) -> Rule {
@@ -113,6 +140,64 @@ pub fn not_(rule: Rule) -> Rule {
     case rule(ctx) {
       Allow -> Deny("negated rule matched")
       Deny(_) -> Allow
+    }
+  }
+}
+
+fn split_multi(value: String) -> List(String) {
+  value
+  |> string.split(",")
+  |> list.map(string.trim)
+  |> list.filter(fn(s) { s != "" })
+}
+
+/// Allow if a comma-separated claim value contains `value` as one segment.
+pub fn claim_contains(key: String, value: String) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.claims, key) {
+      Ok(v) ->
+        case list.contains(split_multi(v), value) {
+          True -> Allow
+          False -> Deny("claim does not contain: " <> key <> "=" <> value)
+        }
+      Error(_) -> Deny("missing required claim: " <> key)
+    }
+  }
+}
+
+/// Allow if a comma-separated claim value contains any element from `allowed`.
+pub fn claim_contains_one_of(key: String, allowed: List(String)) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.claims, key) {
+      Ok(v) ->
+        case list.any(split_multi(v), fn(s) { list.contains(allowed, s) }) {
+          True -> Allow
+          False -> Deny("claim value mismatch: " <> key)
+        }
+      Error(_) -> Deny("missing required claim: " <> key)
+    }
+  }
+}
+
+pub fn query_param(key: String, value: String) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.query, key) {
+      Ok(v) if v == value -> Allow
+      Ok(_) -> Deny("query param value mismatch: " <> key)
+      Error(_) -> Deny("missing required query param: " <> key)
+    }
+  }
+}
+
+pub fn query_param_one_of(key: String, allowed: List(String)) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.query, key) {
+      Ok(v) ->
+        case list.contains(allowed, v) {
+          True -> Allow
+          False -> Deny("query param value mismatch: " <> key)
+        }
+      Error(_) -> Deny("missing required query param: " <> key)
     }
   }
 }
