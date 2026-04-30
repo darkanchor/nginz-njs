@@ -25,17 +25,21 @@ bun scripts/build.js                  # all modules
 bun scripts/build.js authz           # one module
 ```
 
-### Integration tests (requires nginx binary)
+### Integration tests
 ```bash
-make                                   # build nginx from submodules first (one-time)
-bun test 'modules/**/tests/**/*.test.js'   # all modules
-bun test modules/authz/tests           # one module
-KEEP_LOGS=1 bun test modules/authz/tests  # preserve runtime dir for debugging
+# Basic scenarios — standard nginx, always runnable
+bun run test:int                       # modules/*/tests/basic/do.test.js
+bun test modules/authz/tests/basic/do.test.js  # one file
+KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep dist/<module>/logs/ for debug
+
+# Native module scenarios — requires nginx rebuilt with nginz modules
+make                                   # zig build package -Doptimize=ReleaseSmall + nginx configure + make
+bun run test:native                    # all scenarios including jwt, enrich, etc.
 ```
 
-### Both unit + integration
+### Both unit + basic integration
 ```bash
-bun test                               # runs scripts/test.js then bun integration tests
+bun run test                           # unit tests + basic integration tests (no native deps)
 ```
 
 ### Clean
@@ -52,6 +56,7 @@ modules/<name>/src/*.gleam
   → gleam build --target javascript
   → modules/<name>/build/dev/javascript/<name>/<name>.mjs
   → Bun.build() (bundle, ESM, browser target)
+  → append: export default exports()     ← njs js_import needs the default export
   → dist/<name>/njs/app.js   (loaded by nginx via js_import)
   → dist/<name>/nginx.conf   (copied from module root)
 ```
@@ -60,25 +65,30 @@ modules/<name>/src/*.gleam
 
 ### Module layout
 
-Every module in `modules/<name>/` is an independent Gleam package:
+Every module in `modules/<name>/` is an independent Gleam package. The directory name is the short form (e.g., `authz`); the Gleam package name uses the `nginz_njs_` prefix for Hex.pm uniqueness (e.g., `nginz_njs_authz`).
 
 ```
 modules/<name>/
-  gleam.toml          target = "javascript", [javascript] runtime = "bun"
-  module.json         distribution metadata (name, version, exports, nginx/njs compat)
-  nginx.conf          example nginx config
+  gleam.toml              name = "nginz_njs_<name>", target = "javascript"
+  nginx.conf              example nginx config
   src/
-    <name>.gleam      entry point — must export pub fn exports() -> JsObject
-    <name>/           submodules (namespaced to avoid import path collisions)
+    nginz_njs_<name>.gleam   entry point — must export pub fn exports() -> JsObject
+    <name>/                  submodules (namespaced to avoid import path collisions)
       *.gleam
   test/
-    <name>_test.gleam gleam unit tests (gleeunit, must match package name exactly)
+    nginz_njs_<name>_test.gleam  gleeunit entry (must match package name exactly)
   tests/
     <scenario>/
-      nginx.conf      scenario-specific nginx config for integration test
-      do.test.js      bun integration test
+      nginx.conf           scenario-specific nginx config for integration test
+      do.test.js           bun integration test
   docs/README.md
 ```
+
+`scripts/build.js` reads the `name` field from `gleam.toml` to locate the compiled entry mjs at `build/dev/javascript/<package_name>/<package_name>.mjs`.
+
+**Test scenario naming convention:**
+- `tests/basic/` — standard nginx only; runs with `bun run test:int` and `bun run test`
+- `tests/<feature>/` (e.g., `tests/jwt/`, `tests/enrich/`) — requires native modules from `make`; runs with `bun run test:native`
 
 ### Gleam import path rules
 
@@ -104,7 +114,7 @@ pub fn my_rule() -> Rule {
 
 ### njs entry point pattern
 
-Every module's `src/<name>.gleam` must export:
+Every module's `src/nginz_njs_<name>.gleam` must export:
 ```gleam
 pub fn exports() -> JsObject {
   ngx.object()
@@ -120,7 +130,7 @@ js_import main from app.js;
 location / { js_content main.handler_name; }
 ```
 
-`js_path` is resolved relative to the nginx config file's directory (not the `-p` prefix). Integration tests use `js_path "njs/"` with the config at `dist/<name>/nginx.conf` and prefix at `dist/<name>/runtime/`.
+`js_path "njs/"` resolves relative to the nginx config file's directory. The harness copies test scenario configs into `dist/<name>/nginx.conf` before starting nginx (so `njs/` resolves to `dist/<name>/njs/` where `app.js` lives). Nginx prefix is `dist/<name>/` — logs land in `dist/<name>/logs/`.
 
 ### Integration test harness
 
@@ -134,6 +144,10 @@ await startNginx(CONF, MODULE);  // starts nginx; runtime dir → dist/<name>/ru
 
 `scripts/preload.js` (loaded by `bunfig.toml`) triggers a build before any bun integration test suite runs.
 
+### Gleam integer arithmetic in compiled JS
+
+Gleam compiles to JS but `int.bitwise_exclusive_or` uses the gleam_stdlib helper which applies 32-bit semantics via JS `^` for in-range operands. Regular `*` is float, so values exceeding `Number.MAX_SAFE_INTEGER` lose precision. Hash functions that accumulate state across many characters (like FNV-1a) **must wrap each multiplication** via `int.remainder(h * prime, modulus)` where `modulus = 4_294_967_296` to stay in 32-bit range. See `feature_flags/evaluation.gleam`.
+
 ### Native vs scripted boundary
 
 Follow the nginz ROADMAP (`../nginz/ROADMAP.md`) and `../nginz/docs/design-native-vs-scripted.md`:
@@ -142,9 +156,11 @@ Follow the nginz ROADMAP (`../nginz/ROADMAP.md`) and `../nginz/docs/design-nativ
 
 ### Module catalog and roadmap priority
 
-`registry/index.json` lists current modules. Roadmap priority (from nginz design doc):
+`ROADMAP.md` has the full scripted module roadmap. Module metadata (name, version, native deps) lives in each module's `gleam.toml` under `[metadata]`. Priority order:
 1. `http_client` — `ngx.fetch()` wrapper (no native dependency, highest leverage)
 2. `workflow` — subrequest orchestration (scaffolded)
 3. `feature_flags` — stable bucketing (scaffolded)
-4. `session` — blocked on nginz shared-dict native module
-5. `authz` — blocked on nginz JWT native module for claim variables; exists as FP design reference
+4. `authz` — FP design reference; JWT claims need the native `jwt` module in the binary
+5. `session` — blocked on nginz `shared_dict` native module
+
+The `Makefile` builds native modules from `submodules/nginz/` using `zig build package`. Default: `echoz jwt`. Override with `make NGINZ_MODULES="echoz jwt requestid"`.

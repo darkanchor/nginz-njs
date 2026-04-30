@@ -8,7 +8,18 @@
       "Bash(gleam test *)",
       "Bash(gleam build *)",
       "Bash(bun scripts/test.js)",
-      "Bash(bun *)"
+      "Bash(bun *)",
+      "Bash(KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js)",
+      "Bash(grep -v \"^$\")",
+      "Bash(node *)",
+      "Bash(KEEP_LOGS=1 bun test modules/feature_flags/tests/basic/do.test.js)",
+      "Bash(curl -s 'http://localhost:8888/bucket?id=__TRACKED_VAR__')",
+      "Bash(wait)",
+      "Bash(git -C /home/kaiwu/Documents/gitea/nginz remote -v)",
+      "Bash(git *)",
+      "Bash(/home/kaiwu/Documents/gitea/nginz-njs/submodules/nginx/objs/nginx -V)",
+      "Bash(make *)",
+      "Bash(NGINX_BIN=/usr/bin/nginx bun scripts/build.js authz)"
     ]
   }
 }

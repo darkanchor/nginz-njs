@@ -1,4 +1,4 @@
-name = "feature_flags"
+name = "nginz_njs_feature_flags"
 version = "0.1.0"
 target = "javascript"
 description = "Feature flag evaluation with stable bucketing for A/B routing in nginx"
@@ -16,3 +16,5 @@ gleeunit = ">= 1.0.0 and < 2.0.0"
 
 [javascript]
 runtime = "bun"
+
+[metadata.native]

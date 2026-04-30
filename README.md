@@ -103,9 +103,51 @@ Pure, testable, no hidden state.
 
 | Module | Purpose | Status |
 |---|---|---|
-| [`authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
-| [`workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
-| [`feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
+| [`nginz_njs_authz`](modules/authz/) | Policy-based authorization: method, path, header, JWT claim rules | scaffold |
+| [`nginz_njs_workflow`](modules/workflow/) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
+| [`nginz_njs_feature_flags`](modules/feature_flags/) | Feature flag evaluation with stable bucketing for A/B routing | scaffold |
+
+## Setup
+
+### 1. Clone with submodules
+
+```bash
+git clone --recurse-submodules https://github.com/kaiwu/nginz-njs.git
+# or, after a plain clone:
+git submodule update --init --recursive
+```
+
+This initializes four submodules:
+
+| Path | Contents |
+|---|---|
+| `submodules/nginx` | nginx source |
+| `submodules/njs` | njs scripting engine |
+| `submodules/quickjs` | QuickJS engine (used by njs) |
+| `submodules/nginz` | Native Zig modules (echoz, jwt, …) |
+
+### 2. Build nginx with native modules
+
+```bash
+make                                      # default: echoz + jwt
+make NGINZ_MODULES="echoz jwt requestid"  # add more nginz modules
+```
+
+What `make` does:
+
+1. **Builds QuickJS** (`libquickjs.a`) from `submodules/quickjs`
+2. **Builds nginz native modules** via `zig build package -Doptimize=ReleaseSmall` in `submodules/nginz` — produces `zig-out/modules/<name>/` with a linkable object file for each module
+3. **Configures and builds nginx** with `--add-module` flags for njs and each selected nginz module
+
+The resulting binary is at `submodules/nginx/objs/nginx`. The `Makefile` symlinks or exports `NGINX_BIN` so the integration test harness picks it up automatically.
+
+**This step is a prerequisite for native-module integration tests** (`bun run test:native`). Basic integration tests (`bun run test:int`) and unit tests (`bun run test:unit`) work without it.
+
+### 3. Tool requirements
+
+- [Gleam](https://gleam.run) >= 1.14.0
+- [Bun](https://bun.sh) >= 1.1.0
+- [Zig](https://ziglang.org) >= 0.14.0 (only needed for `make`)
 
 ## Dev / test / package
 
@@ -117,9 +159,10 @@ Each module is an independent Gleam package that targets the `javascript` runtim
 modules/<name>/src/*.gleam
         │
         ▼  gleam build --target javascript
-modules/<name>/build/dev/javascript/<name>/<name>.mjs
+modules/<name>/build/dev/javascript/nginz_njs_<name>/nginz_njs_<name>.mjs
         │
         ▼  Bun.build() (native bundler, no esbuild install needed)
+        ▼  append: export default exports()
 dist/<name>/njs/app.js    ← loaded by nginx via js_import
 dist/<name>/nginx.conf    ← example nginx configuration
 ```
@@ -137,47 +180,47 @@ bun run test:unit authz          # gleam test for one module
 # or directly from a module directory:
 cd modules/authz && gleam test
 
-# --- integration tests (requires nginx binary) ---
-make                             # build nginx from submodules first
-bun run test:int                 # bun test against real nginx, all modules
-bun test modules/authz/tests     # one module only
-KEEP_LOGS=1 bun test modules/authz/tests  # keep runtime dir for debug
+# --- integration tests ---
+bun run test:int                 # basic scenarios (standard nginx, always works)
+bun test modules/authz/tests/basic/do.test.js  # one scenario
+KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep logs for debug
 
-# --- both ---
-bun test                         # unit + integration
+# --- native module integration tests (requires rebuilt nginx) ---
+make                             # build nginx with echoz + jwt from submodules/nginz
+bun run test:native              # all scenarios including native-module tests
+
+# --- both (unit + basic integration) ---
+bun run test                     # unit tests + basic integration tests
 
 # --- clean ---
 bun run clean                    # remove dist/, build/, manifest.toml
 ```
 
-### Packaging
+### Deploying a module
 
-There is no publish step yet. The deliverable for each module is:
+Build output lands in `dist/<name>/njs/app.js`. There are two ways to deploy it:
 
+**DIY (most flexible):** copy `dist/<name>/njs/app.js` to your nginx host and adapt `dist/<name>/nginx.conf` to fit your existing config.
+
+**Helper script:**
+
+```bash
+bun run deploy authz /etc/nginx/conf.d/authz
+# or directly:
+bun scripts/deploy.js authz /etc/nginx/conf.d/authz
 ```
-dist/<name>/
-  njs/app.js      ← the bundled njs script; load with js_import in nginx
-  nginx.conf      ← example configuration
-```
 
-Copy `dist/<name>/` to your nginx deployment. The `module.json` at the module root carries version and compatibility metadata for future distribution tooling.
+The script copies `app.js` to `<dest>/njs/app.js`, prints the nginx config snippet to load the module, and warns if your nginx binary is missing any required native modules (declared in `[metadata] native_modules` in `gleam.toml`).
 
-When modules are stable they will be published to [Hex](https://hex.pm) as independent Gleam packages, so users can depend on them directly in their own Gleam njs projects via `gleam add authz`.
-
-### Requirements
-
-- [Gleam](https://gleam.run) >= 1.14.0
-- [Bun](https://bun.sh) >= 1.1.0
-- nginx with njs + QuickJS engine (see `Makefile` for building from submodules)
+When modules are stable they will be published to [Hex](https://hex.pm) as independent Gleam packages — versioning and dependency metadata live in `gleam.toml`. Users can depend on them directly via `gleam add nginz_njs_authz`.
 
 ## Project structure
 
 ```
 nginz-njs/
 ├── modules/
-│   ├── authz/              ← each module is a Gleam package
-│   │   ├── gleam.toml      ← Gleam project config, declares ngs dependency
-│   │   ├── module.json     ← machine-readable metadata for distribution
+│   ├── authz/              ← directory name; Gleam package is nginz_njs_authz
+│   │   ├── gleam.toml      ← package config (name, version, ngs dependency)
 │   │   ├── nginx.conf      ← example nginx configuration
 │   │   ├── src/            ← Gleam source modules
 │   │   ├── test/           ← Gleam unit tests (gleam test)
@@ -187,32 +230,35 @@ nginz-njs/
 │   └── feature_flags/
 ├── scripts/
 │   ├── build.js            ← build all/one module: gleam build + Bun.build()
+│   ├── deploy.js           ← copy app.js to dest, print nginx snippet, check native deps
 │   ├── test.js             ← gleam unit tests for all/one module
 │   ├── harness.js          ← bun integration test harness (nginx lifecycle)
 │   └── preload.js          ← bun preload: build before integration tests run
-├── registry/
-│   └── index.json          ← module catalog
+├── ROADMAP.md              ← scripted module roadmap
 ├── dist/                   ← build output (gitignored)
 ├── submodules/
-│   └── nginx/              ← nginx source for building the test binary
-└── Makefile                ← builds nginx binary for integration tests
+│   ├── nginx/              ← nginx source
+│   ├── njs/                ← njs scripting engine
+│   ├── quickjs/            ← QuickJS engine
+│   └── nginz/              ← native Zig modules (echoz, jwt, …)
+└── Makefile                ← builds nginx + selected nginz native modules
 ```
 
 ## Per-module structure
 
 ```
 modules/<name>/
-├── gleam.toml        Gleam package config; declares ngs as dependency
-├── module.json       name, version, nginx/njs compatibility metadata
+├── gleam.toml        package name "nginz_njs_<name>", version, ngs dependency
 ├── nginx.conf        example nginx config showing the module in use
 ├── src/
-│   ├── <name>.gleam  entry point; exports() returns the JsObject for nginx
-│   └── *.gleam       supporting modules (policy, pipeline, evaluation, …)
+│   ├── nginz_njs_<name>.gleam  entry point; exports() returns the JsObject for nginx
+│   └── <name>/                 submodules (namespaced to src/<name>/)
+│       └── *.gleam
 ├── test/
-│   └── *_test.gleam  Gleam unit tests — run with `gleam test`
+│   └── nginz_njs_<name>_test.gleam  Gleam unit tests (gleeunit entry)
 ├── tests/
 │   └── <scenario>/
-│       ├── nginx.conf  scenario-specific nginx config (optional override)
+│       ├── nginx.conf  scenario-specific nginx config
 │       └── do.test.js  bun integration test
 └── docs/
     └── README.md     design rationale, limitations, operational guidance
@@ -220,12 +266,12 @@ modules/<name>/
 
 ## Authoring a new module
 
-1. Create the module directory and Gleam package:
+1. Create the module directory and Gleam package with the `nginz_njs_` prefix:
 
 ```bash
 mkdir modules/my_module
 cd modules/my_module
-gleam new . --name my_module
+gleam new . --name nginz_njs_my_module
 ```
 
 2. Add `ngs` as a dependency in `gleam.toml`:
@@ -235,10 +281,15 @@ gleam new . --name my_module
 ngs = ">= 1.0.8 and < 2.0.0"
 ```
 
-3. Write the entry point with an `exports()` function:
+3. Rename the generated entry file and write the `exports()` function:
+
+```bash
+mv src/nginz_njs_my_module.gleam src/nginz_njs_my_module.gleam  # already correct
+mv test/nginz_njs_my_module_test.gleam test/nginz_njs_my_module_test.gleam
+```
 
 ```gleam
-// src/my_module.gleam
+// src/nginz_njs_my_module.gleam
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 
@@ -252,11 +303,16 @@ pub fn exports() -> JsObject {
 }
 ```
 
-4. Create `module.json`, `nginx.conf`, unit tests, and integration tests.
+4. Add `[metadata.native]` to `gleam.toml` declaring any required native nginx modules, namespaced by source:
 
-5. Register the module in `registry/index.json`.
+```toml
+[metadata.native]
+nginz = ["jwt"]   # omit the section entirely if no native deps
+```
 
-6. Add the module to `scripts/build.js` if it needs special build steps (usually not required).
+`bun scripts/build.js` reads this and fails early if the declared modules are absent from the nginx binary. `bun scripts/deploy.js` reads the same data to warn operators and print the correct `make` command.
+
+5. Create `nginx.conf`, unit tests in `test/`, and integration tests in `tests/<scenario>/`.
 
 ## Native vs scripted boundary
 
@@ -273,15 +329,22 @@ This project **only** contains scripted modules. The decision rule:
 
 When the performance-critical primitive is native (HMAC, JSON parsing, shared-memory atomics), the surrounding policy belongs here.
 
-## Relationship to nginz roadmap
+## Relationship to nginz
 
-The nginz roadmap (Sprint 2+) targets a shared-dict native module and an upstream balancer module. When those land, scripted modules in this repo will be able to depend on them:
+`nginz` is included as a submodule at `submodules/nginz/`. The `Makefile` builds selected native modules (default: `echoz`, `jwt`) via `zig build package` and links them into the nginx binary. The set of active modules is controlled by the `NGINZ_MODULES` variable:
 
-- `workflow` can use shared dict for caching enrichment results
-- `feature_flags` can use shared dict for flag state without an external service
-- `authz` can cache introspection results by token hash
+```bash
+make                              # build with default: echoz jwt
+make NGINZ_MODULES="echoz jwt requestid"  # extend the set
+```
 
-This repo intentionally stays ahead of the native layer: scripted modules define what the platform needs, native primitives follow.
+Scripted modules in this repo orchestrate and compose the native primitives:
+
+- `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
+- `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
+- `nginz_njs_feature_flags` will use shared-dict state once the native `shared_dict` module lands
+
+See [ROADMAP.md](ROADMAP.md) for the scripted module roadmap.
 
 ## License
 

@@ -1,4 +1,4 @@
-name = "authz"
+name = "nginz_njs_authz"
 version = "0.1.0"
 target = "javascript"
 description = "Policy-based authorization for nginx: method, path, header, and JWT claim rules"
@@ -16,3 +16,6 @@ gleeunit = ">= 1.0.0 and < 2.0.0"
 
 [javascript]
 runtime = "bun"
+
+[metadata.native]
+nginz = ["jwt"]

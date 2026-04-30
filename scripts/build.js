@@ -1,6 +1,7 @@
 import { spawnSync } from "bun";
-import { existsSync, copyFileSync, readdirSync } from "fs";
+import { existsSync, copyFileSync, readdirSync, appendFileSync } from "fs";
 import { join } from "path";
+import { readMetadata, checkNativeDeps } from "./metadata.js";
 
 const ROOT = import.meta.dir.replace(/\/scripts$/, "");
 const MODULES_DIR = join(ROOT, "modules");
@@ -13,20 +14,24 @@ function getModules(filter) {
   return filter ? all.filter((n) => n === filter) : all;
 }
 
-async function buildModule(name) {
-  const moduleDir = join(MODULES_DIR, name);
-  const distDir = join(DIST_DIR, name);
+async function buildModule(dirName) {
+  const moduleDir = join(MODULES_DIR, dirName);
+  const distDir = join(DIST_DIR, dirName);
+  const meta = readMetadata(moduleDir);
+  const pkgName = meta.name;
 
-  console.log(`building ${name}...`);
+  checkNativeDeps(meta.native);
+
+  console.log(`building ${dirName} (${pkgName})...`);
 
   const gleam = spawnSync(["gleam", "build", "--target", "javascript"], {
     cwd: moduleDir,
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (gleam.exitCode !== 0) throw new Error(`gleam build failed for ${name}`);
+  if (gleam.exitCode !== 0) throw new Error(`gleam build failed for ${dirName}`);
 
-  const entry = join(moduleDir, `build/dev/javascript/${name}/${name}.mjs`);
+  const entry = join(moduleDir, `build/dev/javascript/${pkgName}/${pkgName}.mjs`);
   if (!existsSync(entry)) throw new Error(`entry not found: ${entry}`);
 
   const result = await Bun.build({
@@ -40,13 +45,16 @@ async function buildModule(name) {
 
   if (!result.success) {
     for (const msg of result.logs) console.error(msg);
-    throw new Error(`bundle failed for ${name}`);
+    throw new Error(`bundle failed for ${dirName}`);
   }
+
+  // njs loads the module via js_import which expects a default export
+  appendFileSync(join(distDir, "njs", "app.js"), "\nexport default exports()\n");
 
   const conf = join(moduleDir, "nginx.conf");
   if (existsSync(conf)) copyFileSync(conf, join(distDir, "nginx.conf"));
 
-  console.log(`  ✓ dist/${name}/njs/app.js`);
+  console.log(`  ✓ dist/${dirName}/njs/app.js`);
 }
 
 const filter = process.argv[2];
@@ -57,6 +65,6 @@ if (modules.length === 0) {
   process.exit(1);
 }
 
-for (const name of modules) {
-  await buildModule(name);
+for (const dirName of modules) {
+  await buildModule(dirName);
 }

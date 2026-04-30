@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "bun";
-import { mkdirSync, rmSync, existsSync } from "fs";
+import { mkdirSync, rmSync, existsSync, copyFileSync } from "fs";
 import { join, isAbsolute } from "path";
 
 let nginxProcess = null;
@@ -33,7 +33,11 @@ export async function startNginx(configPath, moduleName) {
     ? configPath
     : join(ROOT, configPath);
 
-  nginxProcess = spawn([NGINX_BIN, "-c", absConfig, "-p", prefix], {
+  // Deploy the config into dist/<module>/ so js_path "njs/" resolves to dist/<module>/njs/
+  const deployedConfig = join(prefix, "nginx.conf");
+  copyFileSync(absConfig, deployedConfig);
+
+  nginxProcess = spawn([NGINX_BIN, "-c", deployedConfig, "-p", prefix], {
     stdout: "inherit",
     stderr: "inherit",
     cwd: ROOT,
@@ -69,8 +73,8 @@ async function waitForPort(port, timeout = 5000) {
 
 export function cleanupRuntime(moduleName) {
   if (process.env.KEEP_LOGS) return;
-  const runtimeDir = join(ROOT, "dist", moduleName, "runtime");
-  if (existsSync(runtimeDir)) rmSync(runtimeDir, { recursive: true });
+  const logsDir = join(ROOT, "dist", moduleName, "logs");
+  if (existsSync(logsDir)) rmSync(logsDir, { recursive: true });
 }
 
 export const TEST_PORT_NUM = TEST_PORT;

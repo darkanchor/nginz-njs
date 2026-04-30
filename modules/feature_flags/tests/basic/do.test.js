@@ -52,6 +52,7 @@ describe("feature_flags — flag evaluation", () => {
     const r2 = await fetch(`${TEST_URL}/bucket?id=user-2`);
     const b1 = parseInt(await r1.text(), 10);
     const b2 = parseInt(await r2.text(), 10);
-    expect(b1).not.toBe(b2);
+    expect(b1).toBe(24);
+    expect(b2).toBe(48);
   });
 });

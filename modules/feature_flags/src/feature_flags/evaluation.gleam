@@ -29,8 +29,10 @@ pub fn bucket(key: BucketKey) -> Int {
 fn fnv1a(s: String) -> Int {
   let prime = 16_777_619
   let offset = 2_166_136_261
+  let modulus = 4_294_967_296
   string.to_utf_codepoints(s)
   |> list.fold(offset, fn(hash, cp) {
-    int.bitwise_exclusive_or(hash, string.utf_codepoint_to_int(cp)) * prime
+    let xored = int.bitwise_exclusive_or(hash, string.utf_codepoint_to_int(cp))
+    int.remainder(xored * prime, modulus) |> result.unwrap(0)
   })
 }
