@@ -4,7 +4,7 @@ Policy-based authorization for nginx written in Gleam. Rules are pure functions;
 
 ## Design goals
 
-- A single `Decision` type (`Allow` | `Deny(reason)`) flows through every rule — no exceptions, no side channels
+- A single `Decision` type (`Allow` | `Deny(status: Int, reason: String)`) flows through every rule — no exceptions, no side channels
 - Rules are first-class values: `Rule = fn(Context) -> Decision`
 - Combinators (`all_of`, `any_of`, `not_`) let you build arbitrary policy trees from atomic rules
 - The native jwt module (optional) handles cryptographic verification; this module reads the resulting nginx variables and applies claim-based policy in Gleam
@@ -14,9 +14,9 @@ Policy-based authorization for nginx written in Gleam. Rules are pure functions;
 
 | Handler | nginx directive | Description |
 |---|---|---|
-| `main.check` | `js_content` | Method whitelist; returns 204 or 403 |
+| `main.check` | `js_content` | Method whitelist; returns 204 or the `Deny` status |
 | `main.jwt_check` | `js_content` | Reads `$jwt_claim_*` vars and checks role claim |
-| `main.remote_check` | `js_content` | POSTs to OPA-compatible endpoint; returns 204 or 403 |
+| `main.remote_check` | `js_content` | POSTs to OPA-compatible endpoint; returns 204 or the `Deny` status |
 | `main.cached_remote_check` | `js_content` | `remote_check` with `ngx.shared` cache keyed by Bearer token SHA-256 |
 | `main.enriched_check` | `js_content` | `check` + sets `X-Authz-Status` response header |
 | `main.enriched_jwt_check` | `js_content` | `jwt_check` + sets `X-Authz-Status` and `X-Authz-<Claim>` headers |

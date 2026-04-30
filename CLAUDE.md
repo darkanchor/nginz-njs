@@ -97,12 +97,14 @@ modules/<name>/
     <scenario>/
       nginx.conf           scenario-specific nginx config for integration test
       do.test.js           bun integration test
-  docs/README.md
+  docs/                  optional auxiliary notes
 ```
 
 `scripts/build.js` reads the `name` field from `gleam.toml` to locate the compiled entry mjs at `build/dev/javascript/<package_name>/<package_name>.mjs`.
 
 When adding functionality, prefer putting real logic under `src/<name>/...` with clean `pub` interfaces, and keep `src/nginz_njs_<name>.gleam` thin. If another module could plausibly use the logic directly, it belongs in the reusable library surface rather than in the `exports()` adapter.
+
+Each module should have one canonical `README.md` at its root. Treat `docs/` as optional space for extra notes or design material, not as the primary module documentation contract.
 
 **Test scenario naming convention:**
 - `tests/basic/` — standard nginx only; runs with `bun run test:int` and `bun run test`

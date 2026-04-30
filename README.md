@@ -66,14 +66,14 @@ Inside `nginz-njs` itself, composability happens at the Gleam module boundary fi
 ```gleam
 // modules/authz/src/policy.gleam
 
-pub type Decision { Allow  Deny(reason: String) }
+pub type Decision { Allow  Deny(status: Int, reason: String) }
 pub type Rule = fn(Context) -> Decision
 
 pub fn evaluate(ctx: Context, rules: List(Rule)) -> Decision {
   list.fold_until(rules, Allow, fn(_, rule) {
     case rule(ctx) {
       Allow    -> list.Continue(Allow)
-      Deny(r)  -> list.Stop(Deny(r))
+      Deny(status, r)  -> list.Stop(Deny(status, r))
     }
   })
 }
@@ -82,7 +82,7 @@ pub fn method_in(allowed: List(String)) -> Rule {
   fn(ctx) {
     case list.contains(allowed, ctx.method) {
       True  -> Allow
-      False -> Deny("method not allowed: " <> ctx.method)
+      False -> Deny(403, "method not allowed: " <> ctx.method)
     }
   }
 }
@@ -91,7 +91,7 @@ pub fn path_prefix(prefix: String) -> Rule {
   fn(ctx) {
     case string.starts_with(ctx.path, prefix) {
       True  -> Allow
-      False -> Deny("path not allowed: " <> ctx.path)
+      False -> Deny(403, "path not allowed: " <> ctx.path)
     }
   }
 }
@@ -270,7 +270,7 @@ nginz-njs/
 │   │   ├── src/            ← Gleam source modules
 │   │   ├── test/           ← Gleam unit tests (gleam test)
 │   │   ├── tests/          ← bun integration tests against real nginx
-│   │   └── docs/           ← design notes, limitations, operational guidance
+│   │   └── docs/           ← optional auxiliary notes, design explorations, extra guidance
 │   ├── http_client/
 │   ├── workflow/
 │   └── feature_flags/
@@ -307,7 +307,7 @@ modules/<name>/
 │   └── <scenario>/
 │       ├── nginx.conf  scenario-specific nginx config
 │       └── do.test.js  bun integration test
-└── docs/             design notes, architecture decisions, operational guidance
+└── docs/             optional auxiliary notes, architecture decisions, operational guidance
 ```
 
 ## Authoring a new module
@@ -361,6 +361,8 @@ nginz = ["jwt"]   # omit the section entirely if no native deps
 5. Create `nginx.conf`, unit tests in `test/`, and integration tests in `tests/<scenario>/`.
 
 When authoring a module, keep the `exports()` file thin. If another module could plausibly reuse the logic, it belongs under `src/<name>/...` as part of the building-block surface rather than inside the nginx adapter.
+
+Each module should have one canonical `README.md` at the module root. Treat `docs/` as optional space for auxiliary notes, design explorations, or extra operational guidance rather than the primary module documentation surface.
 
 ## Native vs scripted boundary
 
