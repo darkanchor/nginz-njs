@@ -149,12 +149,12 @@ Why scripted:
 - Webhook integrations are awkward, fast-changing, and script-friendly
 - The HMAC verification primitive is in njs Web Crypto; the vendor-specific glue is scripted
 
-#### `metrics` — push-based metrics forwarding
+#### `metrics` — reusable metrics modeling and line rendering
 
-**Status:** scaffold  
+**Status:** complete  
 **Blockers:** none
 
-Log-phase njs script emitting per-request metrics to DogStatsD / StatsD. Complements the native `prometheus` (pull-based) module.
+Reusable scripted metric model plus StatsD/DogStatsD line rendering for downstream modules like `authz`, `http_client`, `feature_flags`, `session`, `mlcache`, and `response_transform`. Transport/sink delivery remains a separate concern.
 
 Why scripted:
 - Log-phase string formatting; no performance constraint

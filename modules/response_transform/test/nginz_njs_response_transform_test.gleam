@@ -1,8 +1,10 @@
 import gleam/dict
 import gleeunit
 import gleeunit/should
+import metrics/line
 import response_transform/body
 import response_transform/eval
+import response_transform/metrics
 import response_transform/plan.{
   ConflictingOperations, DropField, EmptyPlan, MaskField, Plan, RenameField,
   SetField, WhenStatus,
@@ -158,4 +160,20 @@ pub fn body_encode_object_round_trip_test() {
   let encoded = body.encode_object(fields)
   body.parse_object(encoded)
   |> should.equal(Ok(fields))
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_transform_test() {
+  line.render_statsd(metrics.transform(200))
+  |> should.equal(
+    "nginz.response_transform_total:1|c|#result:transformed,status:200",
+  )
+}
+
+pub fn metrics_passthrough_test() {
+  line.render_statsd(metrics.passthrough(500))
+  |> should.equal(
+    "nginz.response_transform_total:1|c|#result:passthrough,status:500",
+  )
 }

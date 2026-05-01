@@ -31,6 +31,11 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 - `save(dict_name, session_id, subject, ttl_s)` — persists session ID → subject with TTL
 - `delete(dict_name, session_id)` — invalidates a session; silent no-op on miss
 
+**`session/metrics.gleam`**
+- `start()` — reusable lifecycle counter for successful session creation
+- `verify(success)` — reusable lifecycle counter for verification success/failure
+- `end_session()` — reusable lifecycle counter for session invalidation
+
 **`nginz_njs_session.gleam`**
 - `describe` — returns a stable summary of the default session descriptor
 - `start` (async) — SHA-256 session ID from timestamp + remote addr; stores subject; sets Set-Cookie; returns 204
@@ -193,7 +198,7 @@ The architectural rule: session lifecycle and policy belong in this reusable lib
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js session` — 16 unit tests pass
+- [x] `bun scripts/test.js session` — 20 unit tests pass
 - [x] `bun test modules/session/tests/basic/do.test.js` — basic integration passes
 - [x] `bun test modules/session/tests/store/do.test.js` — store lifecycle passes
 - [x] `bun run test:int` — all 36 basic integration tests pass (includes authz + feature_flags)

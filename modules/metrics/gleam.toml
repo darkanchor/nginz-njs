@@ -1,7 +1,7 @@
 name = "nginz_njs_metrics"
 version = "0.1.0"
 target = "javascript"
-description = "Metrics forwarding scaffold for nginx: reusable StatsD formatting primitives and log-phase design"
+description = "Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module nginx instrumentation"
 
 licences = ["Apache-2.0"]
 gleam = ">= 1.14.0"

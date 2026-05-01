@@ -32,6 +32,10 @@ Response transformation library for nginx written in Gleam. Reusable plan-based 
 - `encode_object(fields)` — encode back to a JSON object string
 - Non-parseable bodies (e.g. non-string field values) pass through unchanged
 
+**`response_transform/metrics.gleam`**
+- `transform(status)` — reusable counter metric for transformed responses
+- `passthrough(status)` — reusable counter metric for pass-through responses
+
 **`nginz_njs_response_transform.gleam`**
 - `describe` — stable plan summary
 - `preview_plan` — plan summary prefixed with "preview: "
@@ -157,6 +161,6 @@ location /api/errors/ {
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js response_transform` — 21 unit tests pass
+- [x] `bun scripts/test.js response_transform` — 23 unit tests pass
 - [x] `bun test modules/response_transform/tests/basic/do.test.js` — 2 basic tests pass
 - [x] `bun test modules/response_transform/tests/transform/do.test.js` — 4 body-filter integration tests pass

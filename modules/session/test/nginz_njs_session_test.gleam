@@ -1,6 +1,8 @@
 import gleeunit
 import gleeunit/should
+import metrics/line
 import session/cookie
+import session/metrics
 import session/model.{
   CookieConfig, RotateNegative, SessionDescriptor, TtlNotPositive,
 }
@@ -133,4 +135,34 @@ pub fn cookie_read_id_missing_test() {
 pub fn cookie_read_id_empty_header_test() {
   cookie.read_id("", "sid")
   |> should.equal(Error(Nil))
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_start_test() {
+  line.render_statsd(metrics.start())
+  |> should.equal(
+    "nginz.session_lifecycle_total:1|c|#operation:start,result:success",
+  )
+}
+
+pub fn metrics_verify_success_test() {
+  line.render_statsd(metrics.verify(True))
+  |> should.equal(
+    "nginz.session_lifecycle_total:1|c|#operation:verify,result:success",
+  )
+}
+
+pub fn metrics_verify_failure_test() {
+  line.render_statsd(metrics.verify(False))
+  |> should.equal(
+    "nginz.session_lifecycle_total:1|c|#operation:verify,result:failure",
+  )
+}
+
+pub fn metrics_end_session_test() {
+  line.render_statsd(metrics.end_session())
+  |> should.equal(
+    "nginz.session_lifecycle_total:1|c|#operation:end,result:success",
+  )
 }

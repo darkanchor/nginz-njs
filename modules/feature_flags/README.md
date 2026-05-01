@@ -24,6 +24,10 @@ Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure has
 - `load(dict_name, flag_name)` — reads flag config from ngx.shared; `Error(Nil)` on Miss
 - `save(dict_name, flag, ttl_s)` — persists flag config to ngx.shared via `mlcache/shared`
 
+**`feature_flags/metrics.gleam`**
+- `boolean_decision(flag, key, enabled)` — reusable counter metric for boolean flag outcomes
+- `variant_selection(flag, key, variant, is_fallback)` — reusable counter metric for variant selection outcomes
+
 **`nginz_njs_feature_flags.gleam`** (njs entry point)
 - `evaluate` — `js_content` handler; checks shared dict first, falls back to nginx vars
 - `evaluate_js_set` — `js_set`-compatible handler for routing decisions
@@ -151,7 +155,7 @@ Goal: improve operability without disturbing the pure evaluator.
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js feature_flags` — 37 unit tests pass
+- [x] `bun scripts/test.js feature_flags` — 41 unit tests pass
 - [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 15 integration tests pass
 - [x] `bun test modules/feature_flags/tests/state/do.test.js` — dict-backed state 5 tests pass
 - [x] `bun test modules/feature_flags/tests/session/do.test.js` — session-key resolution and fallback pass

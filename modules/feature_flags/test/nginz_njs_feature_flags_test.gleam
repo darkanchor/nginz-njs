@@ -4,9 +4,11 @@ import feature_flags/evaluation.{
   describe_variant, evaluate, is_enabled, parse_enabled, parse_override,
   parse_rollout_pct, parse_variant_configs, select_variant,
 }
+import feature_flags/metrics
 import gleam/string
 import gleeunit
 import gleeunit/should
+import metrics/line
 
 pub fn main() {
   gleeunit.main()
@@ -354,4 +356,51 @@ pub fn describe_variant_fallback_test() {
   let desc = describe_variant(flag, ByRequestId("user-1"), NoOverride)
   string.ends_with(desc, " variant=control fallback=1")
   |> should.equal(True)
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_boolean_decision_enabled_test() {
+  let metric =
+    metrics.boolean_decision(
+      Flag(name: "dark_mode", enabled: True, rollout_pct: 100),
+      ByUserId("u-1"),
+      True,
+    )
+  line.render_statsd(metric)
+  |> should.equal(
+    "nginz.feature_flag_decision_total:1|c|#flag:dark_mode,key_type:user_id,result:enabled",
+  )
+}
+
+pub fn metrics_boolean_decision_disabled_test() {
+  let metric =
+    metrics.boolean_decision(
+      Flag(name: "dark_mode", enabled: True, rollout_pct: 0),
+      ByRequestId("req-1"),
+      False,
+    )
+  line.render_statsd(metric)
+  |> should.equal(
+    "nginz.feature_flag_decision_total:1|c|#flag:dark_mode,key_type:request_id,result:disabled",
+  )
+}
+
+pub fn metrics_variant_selection_test() {
+  let metric =
+    metrics.variant_selection(
+      VariantFlag(
+        name: "exp",
+        enabled: True,
+        variants: [VariantConfig(Variant("A"), 100)],
+        fallback: Variant("control"),
+      ),
+      ByRemoteAddr("127.0.0.1"),
+      Variant("A"),
+      False,
+    )
+  line.render_statsd(metric)
+  |> should.equal(
+    "nginz.feature_flag_variant_total:1|c|#flag:exp,key_type:remote_addr,variant:A,fallback:0",
+  )
 }

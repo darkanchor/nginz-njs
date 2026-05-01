@@ -1,6 +1,8 @@
 import gleeunit
 import gleeunit/should
+import metrics/line
 import mlcache/lookup
+import mlcache/metrics
 import mlcache/model.{
   CacheConfig, Hit, Miss, RefreshOnMiss, RefreshStale, SharedDict, Stale,
   StaleTtlNegative, StaleWithNoWindow, TtlNotPositive,
@@ -182,4 +184,22 @@ pub fn get_value_stale_test() {
 pub fn get_value_miss_test() {
   lookup.get_value(Miss)
   |> should.equal(Error(Nil))
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_lookup_result_test() {
+  line.render_statsd(metrics.lookup_result(Hit("cached")))
+  |> should.equal("nginz.mlcache_lookup_total:1|c|#result:hit")
+  line.render_statsd(metrics.lookup_result(Stale("cached")))
+  |> should.equal("nginz.mlcache_lookup_total:1|c|#result:stale")
+  line.render_statsd(metrics.lookup_result(Miss))
+  |> should.equal("nginz.mlcache_lookup_total:1|c|#result:miss")
+}
+
+pub fn metrics_lock_attempt_test() {
+  line.render_statsd(metrics.lock_attempt(True))
+  |> should.equal("nginz.mlcache_lock_total:1|c|#result:acquired")
+  line.render_statsd(metrics.lock_attempt(False))
+  |> should.equal("nginz.mlcache_lock_total:1|c|#result:contended")
 }

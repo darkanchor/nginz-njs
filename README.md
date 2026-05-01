@@ -139,7 +139,7 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache with `ngx.shared` adapter, stale/hit/miss semantics, stampede-collapse; backing layer for authz, feature_flags, and session | complete |
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
-| [`nginz_njs_metrics`](modules/metrics/README.md) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
+| [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
 
 ## Setup
 

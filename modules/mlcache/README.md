@@ -28,6 +28,10 @@ Two-level cache for nginx written in Gleam. Reusable cache semantics and a `ngx.
 - `get(dict_name, key, config)` — reads from `ngx.shared`, classifies as Hit/Stale/Miss using embedded timestamp
 - `put(dict_name, key, value, config)` — writes with dict TTL = ttl + stale_ttl; embeds fresh expiry in the stored string
 
+**`mlcache/metrics.gleam`**
+- `lookup_result(result)` — reusable counter metric for hit/stale/miss outcomes
+- `lock_attempt(acquired)` — reusable counter metric for lock acquisition vs contention
+
 **`nginz_njs_mlcache.gleam`**
 - `describe` — returns a stable summary of the default cache config
 - `put_entry`, `get_entry` — runtime probe handlers for shared-dict put/get semantics
@@ -169,7 +173,7 @@ All three downstream modules now consume mlcache directly — see the consumers 
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js mlcache` — 23 unit tests pass
+- [x] `bun scripts/test.js mlcache` — 25 unit tests pass
 - [x] `bun test modules/mlcache/tests/basic/do.test.js` — basic integration passes
 - [x] `bun test modules/mlcache/tests/runtime/do.test.js` — stale-window and lock runtime probes pass
 - [x] `bun test modules/authz/tests/cache/do.test.js` — authz cache backed by mlcache passes

@@ -1,6 +1,6 @@
 # nginz_njs_metrics
 
-Push-based metrics forwarding for nginx written in Gleam. Provides a reusable instrumentation surface that other modules emit into, rather than each module formatting StatsD/DogStatsD lines on its own.
+Reusable metrics modeling and StatsD/DogStatsD line rendering for nginx written in Gleam. Provides a shared instrumentation surface that other modules emit into, rather than each module formatting protocol lines on its own.
 
 ## Roadmap position
 
@@ -10,8 +10,8 @@ Push-based metrics forwarding for nginx written in Gleam. Provides a reusable in
 
 - keep metric definitions and tag formatting pure and reusable
 - make protocol line rendering explicit and testable
-- let `workflow`, `http_client`, `authz`, and `webhook` emit into this module rather than re-owning formatting
-- keep transport/emission wiring out of the core model
+- let `http_client`, `authz`, `feature_flags`, `session`, `mlcache`, `response_transform`, `workflow`, and `webhook` emit into this module rather than re-owning formatting
+- keep transport and sink wiring out of the core model
 
 ## What is implemented
 
@@ -64,10 +64,10 @@ The architectural rule for this module is: metrics formatting belongs in a reusa
 
 ## Cross-module composition boundary
 
-- `http_client` should later emit latency and failure events through `metrics`
-- `workflow` should later emit step and pipeline events through `metrics`
-- `authz` should later emit decision and denial events through `metrics`
-- `webhook` should later emit delivery and verification events through `metrics`
+- `http_client` now exposes reusable request outcome and latency metrics adapters
+- `authz` now exposes reusable decision and OPA call metrics adapters
+- `feature_flags`, `session`, `mlcache`, and `response_transform` now expose reusable domain-specific metrics adapters
+- `workflow` and `webhook` remain future adopters
 
 ### Usage pattern
 
@@ -97,7 +97,7 @@ let latency_metric =
   ])
 ```
 
-The emission transport (StatsD UDP, DogStatsD, log-phase njs) is a separate concern that consumes `Metric` values from the pure model layer.
+The emission transport (StatsD UDP, DogStatsD, log-phase njs, or another sink) is a separate concern that consumes `Metric` values from the pure model layer.
 
 ## Scripted core vs optional native integration
 
@@ -131,11 +131,11 @@ Goal: make other modules depend on `metrics` instead of formatting strings thems
 - [x] document instrumentation insertion points for `http_client`, `workflow`, and `authz`
 - [x] keep transport concerns out of the core model
 
-### Phase 3 — add real emission adapters ✅
+### Phase 3 — add protocol rendering adapters ✅
 
-Goal: connect the pure metric model to log-phase or push-based transport.
+Goal: connect the pure metric model to concrete StatsD/DogStatsD line rendering without adding sink transport yet.
 
-- [x] add StatsD and DogStatsD emission adapters
+- [x] add StatsD and DogStatsD rendering adapters
 - [ ] add batching or sink configuration only after the event contract is stable
 - [x] keep emission failure handling separate from event modeling (validation is pre-emission)
 
@@ -143,7 +143,7 @@ Goal: connect the pure metric model to log-phase or push-based transport.
 
 - [x] unit-test line rendering, tag ordering, sample rate, namespace (10 rendering tests)
 - [x] unit-test describe output (2 describe tests)
-- [x] unit-test validation: empty name, illegal chars, negative counter, sample rate range, empty/invalid tags (11 validation tests)
+- [x] unit-test validation: empty name, illegal chars, negative counter, sample rate range, empty/invalid tags (12 validation tests)
 - [x] unit-test helper constructors: counter, gauge, timing, increment, error_event, distribution, set (8 helper tests)
 - [x] unit-test tag constructors: service, status, route, method, result (5 tag tests)
 - [x] unit-test error text formatting (5 error text tests)
