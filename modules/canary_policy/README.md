@@ -4,7 +4,7 @@ Scripted canary routing policy for the native `canary` module. The pure policy l
 
 ## Roadmap position
 
-Sprint 4 in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `canary` module which provides percentage/header-based routing decision and `$ngz_canary`. This module provides the scripted policy layer on top.
+Sprint 4A (native-aware policy adapters) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `canary` module which provides percentage/header-based routing decision and `$ngz_canary`. This module provides the scripted policy layer on top.
 
 ## Design goals
 
@@ -144,6 +144,8 @@ import canary_policy/session as canary_session
 let assignment = canary_session.resolve_sticky(ctx, stored_from_session)
 ```
 
+The newer native `redis` variables (`$redis_last_value`, `$redis_last_exists`, `$redis_last_error`) make a native-backed sticky-assignment adapter more realistic if we want to persist canary choices outside njs shared state.
+
 ### metrics — routing observability (library available)
 
 The `canary_policy/metrics` module provides counters for canary/stable decisions. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
@@ -155,6 +157,8 @@ import metrics/line
 let m = canary_metrics.decision_counter(ctx, "/api")
 line.render_statsd(m)
 ```
+
+The newer native `prometheus` variables also make it possible to correlate canary routing decisions with shared load/error signals without inventing a scrape parser in scripted code.
 
 ### response_transform — canary-specific shaping (future)
 
@@ -194,6 +198,8 @@ Future work focuses on composition through existing modules (`feature_flags`, `s
 - [ ] Dynamic canary percentage override in scripted policy
 - [ ] Canary-specific response body transformation via `response_transform`
 - [ ] A/B test assignment integration (canary → bucket mapping)
+- [ ] Native-redis-backed sticky canary assignment using `$redis_last_*` variables
+- [ ] Prometheus-aware canary observability using `$prometheus_requests_total` / `$prometheus_error_rate`
 
 ## TDD plan
 

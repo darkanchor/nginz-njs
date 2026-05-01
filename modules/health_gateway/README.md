@@ -1,14 +1,14 @@
 # nginz_njs_health_gateway
 
-Scripted health aggregation and readiness gating. The pure policy layer parses `$health_backends` nginx variable and applies aggregation/gating logic in Gleam.
+Scripted health aggregation and readiness gating. The pure policy layer should now read native `healthcheck` variables such as `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, and `$health_backend_failure_count`, rather than relying on a simulated `$health_backends` string forever.
 
 ## Roadmap position
 
-Sprint 5 (observability + tracing) in Milestone 2 of `ROADMAP.md`. Intended to compose with `workflow`, `http_client`, `mlcache`, `session`, and `feature_flags`.
+Sprint 5B (health aggregation and readiness) in Milestone 2 of `ROADMAP.md`. Intended to compose with `workflow`, `http_client`, `mlcache`, `session`, and `feature_flags`.
 
 ## Design goals
 
-- Parse `$health_backends` nginx variable to determine backend health status
+- Read native `healthcheck` variables such as `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, and `$health_backend_failure_count`
 - Provide readiness gating: block requests when all backends are unhealthy
 - Render JSON health responses
 - Keep health policy pure and testable
@@ -32,16 +32,16 @@ The aggregator is side-effect free: it transforms backend health data into an ag
 
 ### Optional native integration
 
-- Native `healthcheck` module: provides `/health_status`, `/health_liveness`, `/health_readiness` JSON endpoints
+- Native `healthcheck` module: provides `/health_status`, `/health_liveness`, `/health_readiness` JSON endpoints and direct `$health_*` variables
 - Native module probes backends on configured intervals
 
-**Current implementation does not fetch from native module endpoints.** The entry point reads `$health_backends` as a simulated nginx variable. Future work should compose `http_client` for subrequest-based health fetching.
+**Current checked-in adapter still trails the native surface.** The entry point reads `$health_backends` as a simulated nginx variable today, but the next implementation pass should switch to the direct `$health_*` variables before adding any richer fetch path.
 
 ## Exports
 
 | Handler | nginx directive | Description |
 |---|---|---|
-| `main.aggregate_health` | `js_content` | Returns JSON combining health status of all configured backends (parsed from `$health_backends`) |
+| `main.aggregate_health` | `js_content` | Returns JSON combining health status of all configured backends; next implementation should read direct `$health_*` variables |
 | `main.readiness_gate` | `js_content` | Blocks (503) when all backends unhealthy, passes through otherwise |
 | `main.custom_health` | `js_content` | Returns health JSON |
 
@@ -124,6 +124,10 @@ Response on readiness block:
 - Reads `$health_backends` variable as a comma-separated string (e.g., `"api=healthy,db=unhealthy"`)
 - Parses the string and applies aggregation/gating logic
 
+**Next adapter step (now unblocked)**
+- replace simulated `$health_backends` parsing with direct reads of `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, and `$health_backend_failure_count`
+- use those variables as the baseline native health surface before deciding whether per-backend subrequest aggregation is still needed
+
 **Integration tests**
 - `tests/basic/` — 8 scenarios: all healthy, all unhealthy, degraded, empty, gate healthy, gate unhealthy, custom healthy, custom unhealthy
 
@@ -152,6 +156,8 @@ import health_gateway/cache
 import mlcache/shared
 ```
 
+The newer native `redis` variables (`$redis_connection_state`, `$redis_last_error`) also make it possible to layer cache/backend-health signals into future health decisions without inventing a separate probe path.
+
 ### metrics — health observability (library available)
 
 The `health_gateway/metrics` module provides counters for health aggregate and gate decisions. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
@@ -164,20 +170,22 @@ let m = hg_metrics.aggregate_counter(status, "/health")
 line.render_statsd(m)
 ```
 
+The newer native `consul` variables (`$consul_service_healthy_count`, `$consul_lookup_error`) also create a realistic path for service-discovery-aware health aggregation.
+
 ### http_client — subrequest aggregation (future)
 
-The `health_gateway/aggregate` module provides the interface for http_client-based health fetching from native module endpoints. Implementation is deferred to a future phase.
+The `health_gateway/aggregate` module provides the interface for http_client-based health fetching from native module endpoints. Now that direct `$health_*` variables exist, subrequest aggregation is no longer required for the baseline implementation; it becomes an optional richer path when per-backend detail beyond the scalar variables is needed.
 
 ## Completion scope
 
-`health_gateway` is complete for its core contract as a health aggregation and gating layer:
+`health_gateway` is complete at the pure-library level for aggregation and gating, but its nginx adapter now has a clearer next step because native `$health_*` variables exist:
 
 - Pure aggregation model: backend health list → `AggregateStatus` → `GateDecision`
 - Response rendering: JSON output for aggregate and readiness endpoints
 - nginx handlers: aggregate_health, readiness_gate, custom_health variants
 - Integration test coverage for all handler variants
 
-The `aggregate` and `cache` modules provide interfaces for future `http_client` and `mlcache` integration. Current entry point handlers read health data from nginx variables rather than fetching from native module endpoints.
+The `aggregate` and `cache` modules provide interfaces for future `http_client` and `mlcache` integration. The next implementation pass should first wire the adapter to direct native `$health_*` variables, then decide whether richer per-backend subrequest fetching is still needed.
 
 ## Phased implementation plan
 
@@ -193,13 +201,19 @@ The `aggregate` and `cache` modules provide interfaces for future `http_client` 
 - [x] `health_gateway/gate` — can_dispatch, with_gate wrappers
 - [x] Integration test scenarios
 
-### Phase 3 — subrequest aggregation and caching (interfaces available, implementation deferred)
+### Phase 3 — native-variable adapter wiring (now unblocked)
+
+- [ ] Replace simulated `$health_backends` parsing with direct reads of `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, and `$health_backend_failure_count`
+- [ ] Rework `custom_health` to combine native health variables with scripted signals instead of delegating to aggregate-only behavior
+
+### Phase 4 — richer health composition (future)
 
 - [x] `health_gateway/aggregate` — interface for http_client-based aggregation
 - [x] `health_gateway/cache` — interface for mlcache-based lookup
-- [ ] Implement `fetch_aggregate` with http_client subrequests
+- [ ] Implement `fetch_aggregate` only when per-backend detail beyond `$health_*` variables is needed
 - [ ] Implement `cached_health` with mlcache/shared stale/hit/miss semantics
 - [ ] Health-aware routing in workflow `first_ok` collectors
+- [ ] Redis- and Consul-aware health enrichment using `$redis_connection_state`, `$redis_last_error`, `$consul_service_healthy_count`, and `$consul_lookup_error`
 
 ## TDD plan
 
@@ -218,6 +232,6 @@ The `aggregate` and `cache` modules provide interfaces for future `http_client` 
 
 ## Limitations
 
-- **Health data from nginx variables.** The entry point reads `$health_backends` as a simulated variable string. Production deployment with the native module should fetch health data from `/health_status` endpoints via `http_client`.
-- **Aggregation implementation deferred.** The `aggregate.gleam` module provides the interface but subrequest-based fetching is not implemented.
+- **Adapter still uses a simulated variable.** The checked-in entry point reads `$health_backends` as a string. That is now an adapter lag, not the target architecture, because direct `$health_*` variables exist.
+- **Richer aggregation is still deferred.** The `aggregate.gleam` module provides the interface, but subrequest-based fetching for deeper per-backend detail is not implemented.
 - **Cache implementation deferred.** The `cache.gleam` module provides the interface but mlcache integration is not implemented.

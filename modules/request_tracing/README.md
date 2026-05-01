@@ -4,7 +4,7 @@ Distributed tracing glue for the native `requestid` module. The pure tracing lay
 
 ## Roadmap position
 
-Sprint 5 (observability + tracing) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `requestid` module. Composes with `workflow`, `http_client`, `metrics`, and `session`.
+Sprint 4B (tracing and identity bridges) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `requestid` module. Composes with `workflow`, `http_client`, `metrics`, and `session`.
 
 ## Design goals
 
@@ -143,6 +143,8 @@ let m = rt_metrics.traced_counter(ctx, "/api")
 line.render_statsd(m)
 ```
 
+The newer native `prometheus` variables (`$prometheus_requests_total`, `$prometheus_error_rate`) also make it plausible to combine request tracing with shared load/error context when deciding what to emit or sample.
+
 ## Completion scope
 
 `request_tracing` is complete for its core contract as a header propagation and emission layer:
@@ -177,6 +179,7 @@ Future work focuses on composition through existing modules (`workflow`, `http_c
 - [ ] Trace context propagation through `http_client` middleware
 - [ ] OpenTelemetry-compatible trace format emission
 - [ ] Log-phase emission via `js_log` handler pattern
+- [ ] Optional Prometheus-aware sampling or emission policies using `$prometheus_requests_total` / `$prometheus_error_rate`
 
 ## TDD plan
 

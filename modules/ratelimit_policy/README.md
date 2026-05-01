@@ -4,7 +4,7 @@ Scripted rate-limit response shaping and header injection for the native `rateli
 
 ## Roadmap position
 
-Sprint 4 in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `ratelimit` module which provides counter logic and `$ratelimit_*` variables. This module provides the scripted policy layer on top.
+Sprint 4A (native-aware policy adapters) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `ratelimit` module which provides counter logic and `$ratelimit_*` variables. This module provides the scripted policy layer on top.
 
 ## Design goals
 
@@ -186,6 +186,8 @@ let m = rl_metrics.decision_counter(ctx, "/api")
 line.render_statsd(m)
 ```
 
+With the newer native `prometheus` variable surface, an additional future path is to combine local rate-limit decisions with shared load/error signals such as `$prometheus_requests_total` and `$prometheus_error_rate` when choosing degraded responses or richer observability output.
+
 ## Completion scope
 
 `ratelimit_policy` is complete for its core contract as a response-shaping layer:
@@ -221,6 +223,8 @@ Future work focuses on composition through existing modules (`workflow`, `metric
 
 - [ ] Per-key quota tracking via `mlcache`
 - [ ] Rate limit policy rules: different limits for different paths/claims
+- [ ] Load-aware shaping using native `prometheus` variables (`$prometheus_requests_total`, `$prometheus_error_rate`)
+- [ ] Degraded-mode decisions informed by native `redis` connection state (`$redis_connection_state`)
 
 ## TDD plan
 

@@ -4,7 +4,7 @@ OIDC-to-policy bridge for the native `oidc` module. The pure mapping layer reads
 
 ## Roadmap position
 
-Sprint 6 (security composition) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `oidc` module. Composes with `authz`, `session`, `feature_flags`, and `http_client`.
+Sprint 4B (tracing and identity bridges) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `oidc` module. Composes with `authz`, `session`, `feature_flags`, and `http_client`.
 
 ## Design goals
 
@@ -161,6 +161,8 @@ let binding = session.create_binding(identity, ngx.now())
 // Future: store.save(dict_name, binding.session_id, binding.identity.sub, ttl)
 ```
 
+The newer native `redis` variables (`$redis_last_value`, `$redis_last_exists`, `$redis_last_error`, `$redis_connection_state`) make that persistence story more concrete if we want a native-backed read-through session-binding layer rather than only njs shared-state wiring.
+
 ### http_client — token refresh (interface available)
 
 The `oidc_bridge/refresh` module provides the interface for http_client-based token refresh against the OIDC provider. Implementation is deferred to a future phase:
@@ -172,6 +174,8 @@ import http_client/client
 // Future: refresh(identity, refresh_token) will use http_client
 // to call the token endpoint and return an updated identity
 ```
+
+Native `consul` variables (`$consul_kv_value`, `$consul_kv_found`, `$consul_lookup_error`) also make it more realistic to treat OIDC provider metadata or rollout-specific config as dynamic scripted inputs instead of compile-time-only settings.
 
 ## Completion scope
 
@@ -206,6 +210,8 @@ The `refresh` module provides an interface for future `http_client` integration.
 - [ ] Session store integration (persist bindings via `session/store`)
 - [ ] Automatic refresh on 401 responses from upstream
 - [ ] Custom claim variable registration for additional OIDC claims
+- [ ] Redis-backed session-binding persistence informed by `$redis_last_*` variables
+- [ ] Consul-backed provider/config lookup informed by `$consul_kv_*` variables
 
 ## TDD plan
 

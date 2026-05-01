@@ -4,7 +4,7 @@ Scripted circuit-breaker fallback for the native `circuit-breaker` module. The p
 
 ## Roadmap position
 
-Sprint 4 in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `circuit-breaker` module which provides the shared-memory state machine and `$ngz_circuit_state`. This module provides the scripted policy layer on top.
+Sprint 4A (native-aware policy adapters) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `circuit-breaker` module which provides the shared-memory state machine and `$ngz_circuit_state`. This module provides the scripted policy layer on top.
 
 ## Design goals
 
@@ -164,9 +164,15 @@ line.render_statsd(m)
 
 Cache successful upstream responses in `mlcache`. When circuit is open, serve the cached response as fallback instead of a static error body.
 
+The newer native `redis` variables (`$redis_last_error`, `$redis_connection_state`) also create a useful bridge here: scripted fallback policy can branch on backend cache/read-through health without issuing extra subrequests.
+
 ### authz — circuit-aware authorization (future)
 
 When circuit is open for a backend authorization service, the `authz` module's `remote_check` should fail open or closed based on policy. The circuit breaker state informs that decision.
+
+### consul / prometheus — external health and load signals (future)
+
+The newer native `consul` and `prometheus` variables make it possible to enrich circuit policy with service-health and load signals such as `$consul_service_healthy_count`, `$consul_lookup_error`, `$prometheus_requests_total`, and `$prometheus_error_rate`.
 
 ## Completion scope
 
@@ -203,6 +209,8 @@ Future work focuses on composition through existing modules (`workflow`, `metric
 - [ ] Half-open probe orchestration: route limited traffic through workflow
 - [ ] Per-upstream circuit state tracking (multiple backends)
 - [ ] Dynamic threshold configuration via nginx variables
+- [ ] Consul-enriched circuit policy using `$consul_service_healthy_count` / `$consul_lookup_error`
+- [ ] Redis- and Prometheus-aware fallback selection using `$redis_last_error`, `$redis_connection_state`, `$prometheus_error_rate`
 
 ## TDD plan
 

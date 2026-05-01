@@ -267,190 +267,52 @@ The platform value comes from having good reusable modules first, not from build
 
 ## Milestone 2 — hybrid native+scripted sprints
 
-Milestone 1 (Sprints 1–3) built the scripted foundation with no native dependencies. Milestone 2 shifts to **maximizing the hybrid native+scripted value** — native modules provide the hot-path primitive or endpoint surface, while scripted modules provide reusable Gleam-side policy, mapping, and response-shaping layers on top.
+Milestone 1 (Sprints 1–3) built the scripted foundation with no native dependencies. Milestone 2 keeps the same seven planned modules, but the execution model is now tighter: **keep the milestone, re-sequence the work, and use the broader native surface that already exists** rather than inventing a new milestone just because more variables landed.
 
-The design rule stays the same as the rest of the repo: the reusable library surface is the product; the nginx `exports()` adapter is just the deployment boundary. For this milestone, that means documenting and building typed policy/mapping/fallback libraries first, then composing them into handlers as native surfaces stabilize.
+The design rule stays the same as the rest of the repo: the reusable library surface is the product; the nginx `exports()` adapter is just the deployment boundary. For this milestone, that means documenting and building typed policy, bridge, fallback, and aggregation libraries first, then composing them into handlers against the native surfaces that are now available.
 
 ### Native module surface available to njs
 
-These are the nginx variables native modules expose that njs scripts read via `r.variables.<name>`:
+These are the current native surfaces that scripted modules can consume through nginx variables, subrequests, or both.
 
-| Variable | Native Module | What njs Reads |
-|---|---|---|
-| `$jwt_claims` | jwt | Full JWT payload as JSON string |
-| `$jwt_nowtime` | jwt | Current Unix epoch timestamp |
-| `$jwt_claim_<X>` | jwt | Individual JWT claim value (registered via `jwt_claim` directive) |
-| `$jwt_header_<X>` | jwt | Individual JOSE header field (registered via `jwt_header` directive) |
-| `$ratelimit_result` | ratelimit | Rate limit decision ("allowed" / "denied") |
-| `$ratelimit_key` | ratelimit | The resolved rate limit key value |
-| `$ratelimit_source` | ratelimit | Source identifier ("ip" or "variable") |
-| `$ratelimit_cost` | ratelimit | Per-request cost (decimal string) |
-| `$ngz_canary` | canary | "1" if canary request, "0" otherwise |
-| `$ngz_circuit_state` | circuit-breaker | "closed", "open", or "half_open" |
-| `$ngz_request_id` | requestid | UUIDv4 string per request |
-| `$oidc_claim_sub` | oidc | OIDC subject claim |
-| `$oidc_claim_email` | oidc | OIDC email claim |
-| `$oidc_claim_name` | oidc | OIDC name claim |
-| `$nftset_result` | nftset | nftset lookup result ("matched", "not_found", "denied") |
-| `$nftset_matched_set` | nftset | Name of the matched nftables set |
-| `$echoz_request_body` | echoz | Raw request body string |
+| Native module | Request-local variables available to njs | Subrequest / other njs-facing surface | Immediate scripted leverage |
+|---|---|---|---|
+| `jwt` | `$jwt_claims`, `$jwt_nowtime`, `$jwt_claim_<X>`, `$jwt_header_<X>` | — | Claim-aware policy and downstream auth context |
+| `ratelimit` | `$ratelimit_result`, `$ratelimit_key`, `$ratelimit_source`, `$ratelimit_cost` | — | Rate-limit response shaping and composed security policy |
+| `canary` | `$ngz_canary` | — | Canary tagging and rollout-aware policy |
+| `circuit-breaker` | `$ngz_circuit_state` | — | State-aware fallback and degraded-mode behavior |
+| `requestid` | `$ngz_request_id` | — | Trace propagation and request correlation |
+| `oidc` | `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` | — | Identity mapping and per-user downstream bridging |
+| `nftset` | `$nftset_result`, `$nftset_matched_set` | — | IP-reputation and set-membership signals in security policy |
+| `echoz` | `$echoz_request_body` | — | Request-body exposure for scripted glue and testing |
+| `healthcheck` | `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, `$health_backend_failure_count` | `/health_status`, `/health_liveness`, `/health_readiness` | Unblocks a real `health_gateway` baseline while keeping richer topology via subrequest JSON |
+| `waf` | `$waf_result`, `$waf_rule_id`, `$waf_score`, `$waf_category` | — | Unblocks `security_gateway` composition and observability without bypassing native enforcement |
+| `redis` | `$redis_last_value`, `$redis_last_exists`, `$redis_last_error`, `$redis_connection_state` | `redis_pass` JSON responses | Future sticky-session, cache-adjunct, and degraded-mode bridges |
+| `consul` | `$consul_kv_value`, `$consul_kv_found`, `$consul_service_healthy_count`, `$consul_lookup_error` | `consul_services`, `consul_kv`, `consul_catalog` JSON responses | Future config, routing, and health-aware bridges |
+| `prometheus` | `$prometheus_requests_total`, `$prometheus_error_rate` | `prometheus_metrics` text endpoint | Future adaptive policy and load-aware shaping |
+| `cache-tags` | `$cache_tags_last_purged`, `$cache_tags_last_tag`, `$cache_tags_last_error` | `cache_tags_purge` JSON responses | Future purge workflow orchestration and audit hooks |
 
-Native modules with no variables expose data via subrequest JSON endpoints instead:
+### Current hybrid surface rule
 
-| Module | njs Access Pattern | Response Format |
-|---|---|---|
-| redis | subrequest to `redis_pass` location | `{"value":"..."}` or `{"values":[...]}` |
-| consul | subrequest to `consul_services`/`consul_kv`/`consul_catalog` location | `{"services":[...]}`, `{"value":"..."}` |
-| healthcheck | subrequest to `health_status`/`health_liveness`/`health_readiness` locations | Full JSON status, `{"status":"alive"}`, `{"status":"ready"}` |
-| prometheus | subrequest to `prometheus_metrics` location | Prometheus text format |
-| cache-tags | subrequest to `cache_tags_purge` location | `{"tag":"..","purged":N}` or `{"tags":[...]}` |
-| waf | no njs-facing surface (purely internal access-phase gatekeeper) | — |
+The hybrid rule is unchanged:
 
-### Native variable expansion as an ecosystem tool
+- use **variables** for cheap request-local facts that scripted policy wants to branch on
+- use **subrequest endpoints** for bulk data, mutation flows, and richer operational payloads
 
-The table above is the **current** native surface, not a hard ceiling.
+The important change for this milestone is practical, not philosophical: `healthcheck` and `waf` are no longer hypothetical hybrid surfaces. They now expose the exact facts `health_gateway` and `security_gateway` were waiting on. By contrast, the new `redis`, `consul`, `prometheus`, and `cache-tags` variables are best treated as **future enablers**, not as a reason to bloat Milestone 2.
 
-Some native modules expose rich nginx variables already (`jwt`, `ratelimit`, `canary`, `circuit-breaker`, `requestid`, `oidc`, `nftset`). Others currently expose subrequest JSON endpoints only, or no njs-facing surface at all. That is often the right initial design. But if we want to maximize the hybrid ecosystem, **selective variable exports are a power-enabler**.
+### Milestone 2 sub-sprints
 
-The rule is simple:
+Milestone 2 should be communicated as four dependency-driven sub-sprints rather than the older broad Sprint 4/5/6 buckets.
 
-- use **variables** for cheap, request-local facts that scripted modules want to branch on
-- use **subrequest endpoints** for bulk data, mutations, complex payloads, and operational APIs
+| Sub-sprint | Modules | Theme | Native surfaces consumed |
+|---|---|---|---|
+| `4A` | `ratelimit_policy`, `canary_policy`, `circuit_breaker_policy` | Single-signal policy adapters | `ratelimit`, `canary`, `circuit-breaker` |
+| `4B` | `request_tracing`, `oidc_bridge` | Cross-cutting propagation and identity bridges | `requestid`, `oidc` |
+| `5A` | `security_gateway` | Multi-signal security composition | `jwt`, `oidc`, `ratelimit`, `waf`, optional `nftset` |
+| `5B` | `health_gateway` | Health aggregation and readiness policy | `healthcheck`, later `workflow` / `http_client` / `mlcache` composition |
 
-Variables matter because they let `nginz-njs` modules compose multiple native signals in one typed Gleam context without paying extra subrequest/JSON-parsing cost for every boolean or scalar decision.
-
-#### When exposing a variable is worth it
-
-Expose an nginx variable when the native module has a fact that is:
-
-- read frequently by scripted policy
-- scalar or short-string shaped
-- useful for routing, fallback, gating, challenge, or observability decisions
-- stable enough to document as part of the module surface
-
-Do **not** force everything into variables. Large structured responses, mutation flows, and operational control paths should stay as subrequest endpoints.
-
-#### Desired variable expansions by native module
-
-These are not required for Milestone 2, but they are high-leverage candidates if we want to deepen the hybrid model.
-
-##### `healthcheck`
-
-**Current surface:** subrequest JSON endpoints only (`/health_status`, `/health_liveness`, `/health_readiness`)
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$health_readiness` | Cheap readiness gate without subrequest | `health_gateway`, `workflow` |
-| `$health_liveness` | Fast liveness signal for custom health surfaces | `health_gateway` |
-| `$health_backend_healthy_count` | Aggregate routing/gating decisions | `health_gateway`, `workflow` |
-| `$health_backend_total_count` | Distinguish degraded vs total failure without parsing JSON | `health_gateway` |
-| `$health_backend_failure_count` | Failure-aware fallback and circuit-style policy | `health_gateway`, `circuit_breaker_policy` |
-
-These would let `health_gateway` evolve from “parse a simulated nginx variable” into a real hybrid module without making every check a JSON subrequest round-trip.
-
-##### `waf`
-
-**Current surface:** no njs-facing surface
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$waf_result` | Unified security composition: allow / deny / dryrun / error | `security_gateway` |
-| `$waf_rule_id` | Explain or shape downstream denial/challenge responses | `security_gateway`, `metrics` |
-| `$waf_score` | Escalation/challenge thresholds in scripted policy | `security_gateway` |
-| `$waf_category` | Branch on SQLi/XSS/reputation class without parsing logs | `security_gateway` |
-
-Important boundary: these variables should expose **facts for composition and observability**, not create a scripted bypass around the native access-phase block.
-
-##### `redis`
-
-**Current surface:** subrequest JSON endpoints only
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$redis_last_value` | Cheap policy/cache read for simple string lookups | `feature_flags`, `session` |
-| `$redis_last_exists` | Branch on presence/absence without JSON parsing | `feature_flags`, `workflow` |
-| `$redis_last_error` | Retry/fallback policy in scripted layers | `workflow`, `circuit_breaker_policy` |
-| `$redis_connection_state` | Health-aware routing and degraded-mode decisions | `health_gateway`, `workflow` |
-
-This is most valuable for simple read-through/cache-adapter patterns. Complex Redis operations should stay as subrequests.
-
-##### `consul`
-
-**Current surface:** subrequest JSON endpoints only
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$consul_kv_value` | Dynamic config lookup for policy/routing | `workflow`, `feature_flags` |
-| `$consul_kv_found` | Branch on presence/absence without parsing JSON | `workflow` |
-| `$consul_service_healthy_count` | Service-level gating and routing | `health_gateway`, `workflow` |
-| `$consul_lookup_error` | Fail-open/fail-closed policy in scripted adapters | `workflow`, `health_gateway` |
-
-If implemented, these likely need directive-scoped variable binding rather than unbounded dynamic variable generation.
-
-##### `prometheus`
-
-**Current surface:** Prometheus text endpoint only
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$prometheus_requests_total` | Load-aware routing and response shaping | `metrics`, `workflow` |
-| `$prometheus_error_rate` | Degraded-mode or challenge policy | `circuit_breaker_policy`, `security_gateway` |
-| `$prometheus_active_connections` | Simple load-shedding signal | `ratelimit_policy`, `workflow` |
-
-This is lower priority than `healthcheck` or `waf`, because Prometheus already has a strong scrape-oriented surface. But a few scalar variables could still be powerful.
-
-##### `cache-tags`
-
-**Current surface:** purge-oriented subrequest endpoint only
-
-**Desired variables:**
-
-| Variable | Why it matters | Likely scripted consumers |
-|---|---|---|
-| `$cache_tags_last_purged` | Observability and scripted follow-up behavior | `metrics`, `workflow` |
-| `$cache_tags_last_tag` | Structured logging / audit | `metrics` |
-| `$cache_tags_last_error` | Recovery policy after purge attempts | `workflow` |
-
-This is a lower-leverage candidate unless selective purge becomes a more central scripted orchestration flow.
-
-##### Already strong variable surfaces
-
-These native modules already follow the right hybrid pattern and are the reference model for future native surfaces:
-
-- `jwt` — claims, headers, current time
-- `ratelimit` — decision, key, source, cost
-- `canary` — canary/stable decision
-- `circuit-breaker` — circuit state
-- `requestid` — request ID
-- `oidc` — core identity claims
-- `nftset` — result and matched set
-- `echoz` — request body exposure
-
-For these modules, future work is more likely to be **adding one or two high-value facts** rather than inventing a new surface class.
-
-#### Priority order for variable-surface expansion
-
-If we decide to invest in native-variable expansion as a roadmap theme, the highest-value order is:
-
-1. `healthcheck` — directly unlocks a real `health_gateway`
-2. `waf` — directly unlocks stronger `security_gateway` composition
-3. `redis` — directly improves session/flag/cache adapters
-4. `consul` — strong for dynamic routing/config, but less central than the three above
-5. `prometheus` / `cache-tags` — useful, but more optional
-
-The reason for this order is ecosystem leverage: each of the top three removes a major reason for scripted modules to fall back to ad-hoc subrequest parsing when all they really need is a typed fact.
-
-### Sprint 4 — native-aware policy (reads native variables)
+### Sprint 4A — native-aware policy adapters
 
 #### 10. `ratelimit_policy` — scripted rate-limit response shaping and composition
 
@@ -474,6 +336,7 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 **Future composition:**
 - `ratelimit_policy/metrics` — decision counters via `metrics`
 - `ratelimit_policy/workflow` — degraded-mode fallback composed through `workflow`
+- optional load-aware shaping when a concrete use case exists for `$prometheus_*` or `$redis_connection_state`
 
 **Composes with:** `authz`, `metrics`, `session`, `workflow`, `http_client`
 
@@ -499,6 +362,7 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 **Future composition:**
 - compose `feature_flags` for canary-aware rollouts
 - compose `session` for sticky assignment
+- optionally use `$redis_last_*` for native-backed sticky reads and `$prometheus_*` for rollout observability
 - compose `metrics` and `response_transform` for observability and canary-specific shaping
 
 **Composes with:** `feature_flags`, `session`, `metrics`, `response_transform`
@@ -524,11 +388,12 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 **Future composition:**
 - `workflow` wrappers for step-level recovery
 - `mlcache`-backed cached fallback
+- optional degraded-mode enrichment from `$redis_*`, `$consul_*`, and `$prometheus_*` when there is a concrete upstream-health use case
 - `http_client` retry suppression when the circuit is open
 
 **Composes with:** `workflow`, `http_client`, `metrics`, `mlcache`
 
-### Sprint 5 — native-aware observability and tracing
+### Sprint 4B — tracing and identity bridges
 
 #### 13. `request_tracing` — distributed tracing glue
 
@@ -553,69 +418,12 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 **Future composition:**
 - workflow span recording
 - `http_client` middleware propagation
+- optional sampling / emission policy informed by `$prometheus_*` when adaptive tracing becomes a real need
 - `metrics` emission and eventual `js_log`-phase integration
 
 **Composes with:** `workflow`, `http_client`, `metrics`, `session`
 
-#### 14. `health_gateway` — scripted health aggregation and readiness policy
-
-**Reads from:** backend health inputs today; later, native healthcheck module `/health_status` JSON via subrequest
-
-**Why scripted:**
-- Aggregation and readiness policy are reusable pure logic
-- Future health fetching, caching, and routing composition should happen through existing scripted modules (`http_client`, `workflow`, `mlcache`)
-
-**Current reusable surface:**
-- `health_gateway/model` — `BackendHealth`, `AggregateStatus`, `GateDecision`
-- `health_gateway/response` — aggregate and readiness JSON renderers
-- `health_gateway/gate` — helpers for health-aware dispatch decisions
-- `health_gateway/aggregate` — interface for future `http_client`-based fetching
-- `health_gateway/cache` — interface for future `mlcache`-backed lookup
-
-**Current adapter scope:**
-- read `$health_backends` from nginx variables in the handler
-- parse it into backend health records
-- apply aggregate and readiness logic to build JSON responses
-
-**Future composition:**
-- fetch native healthcheck JSON through `http_client`
-- add `mlcache`-backed stale/hit/miss caching
-- compose `workflow` for health-aware routing and `session`/`feature_flags` for richer custom health surfaces
-
-**Composes with:** `workflow`, `http_client`, `mlcache`, `session`, `feature_flags`
-
-### Sprint 6 — security composition
-
-#### 15. `security_gateway` — unified security policy composition
-
-**Reads from:** `$jwt_claim_*`, `$oidc_claim_*`, `$ratelimit_result` today; `$nftset_result` / WAF-facing signals later
-
-**Why scripted:**
-- Composing multiple security signals into a unified allow/deny/challenge decision is pure policy branching
-- CAPTCHA/challenge page injection for borderline requests
-- Future metrics, WAF shaping, and IP-reputation composition belong in scripted policy rather than native primitives
-
-**Current reusable surface:**
-- `security_gateway/model` — `SecuritySignal`, `SecurityDecision`
-- `security_gateway/evaluate` — compose signals into a single decision using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
-- `security_gateway/challenge` — challenge page renderers
-- `security_gateway/response` — custom error pages per denial reason (401, 403, 429)
-- `security_gateway/metrics` — decision counters and breakdown helpers
-
-**Current adapter scope:**
-- read JWT, OIDC, and ratelimit variables in the nginx handler
-- apply a default hardcoded policy (`deny_if_rate_limited`, then `require_any_auth`)
-- return allow/deny/challenge responses
-
-**Future composition:**
-- metrics emission through `metrics`
-- IP reputation via nftset when the native surface is packageable
-- WAF-facing signal integration when an njs surface exists
-- response shaping through `response_transform`
-
-**Composes with:** `authz`, `session`, `feature_flags`, `http_client`, `metrics`, `response_transform`
-
-#### 16. `oidc_bridge` — OIDC identity mapping and downstream bridge
+#### 14. `oidc_bridge` — OIDC identity mapping and downstream bridge
 
 **Reads from:** `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` (native oidc module)
 
@@ -640,14 +448,77 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 **Future composition:**
 - persist bindings via `session/store`
 - refresh access tokens through `http_client`
-- support additional mapped claims when native OIDC variables expand
+- optionally consume `$redis_*` and `$consul_kv_*` for session-binding and provider-lookup adjuncts when a concrete use case exists
 
 **Composes with:** `authz`, `session`, `feature_flags`, `http_client`
 
-### What is deferred and why
+### Sprint 5A — security composition
+
+#### 15. `security_gateway` — unified security policy composition
+
+**Reads from:** `$jwt_claim_*`, `$oidc_claim_*`, `$ratelimit_result`, `$waf_result`, `$waf_rule_id`, `$waf_score`, `$waf_category`; optional `$nftset_result`
+
+**Why scripted:**
+- Composing multiple security signals into a unified allow/deny/challenge decision is pure policy branching
+- CAPTCHA/challenge page injection for borderline requests
+- Future metrics, WAF shaping, and IP-reputation composition belong in scripted policy rather than native primitives
+
+**Current reusable surface:**
+- `security_gateway/model` — `SecuritySignal`, `SecurityDecision`
+- `security_gateway/evaluate` — compose signals into a single decision using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
+- `security_gateway/challenge` — challenge page renderers
+- `security_gateway/response` — custom error pages per denial reason (401, 403, 429)
+- `security_gateway/metrics` — decision counters and breakdown helpers
+
+**Current adapter scope:**
+- read JWT, OIDC, ratelimit, and WAF variables in the nginx handler
+- apply a default hardcoded policy (`deny_if_rate_limited`, then `require_any_auth`, then optional WAF escalation)
+- return allow/deny/challenge responses
+
+**Future composition:**
+- metrics emission through `metrics`
+- IP reputation via nftset when the native surface is packageable for the chosen deployment
+- response shaping through `response_transform`
+
+**Composes with:** `authz`, `session`, `feature_flags`, `http_client`, `metrics`, `response_transform`
+
+### Sprint 5B — health aggregation and readiness
+
+#### 16. `health_gateway` — scripted health aggregation and readiness policy
+
+**Reads from:** `$health_readiness`, `$health_liveness`, `$health_backend_healthy_count`, `$health_backend_total_count`, `$health_backend_failure_count`; later, native healthcheck JSON subrequests for richer detail
+
+**Why scripted:**
+- Aggregation and readiness policy are reusable pure logic
+- Future health fetching, caching, and routing composition should happen through existing scripted modules (`http_client`, `workflow`, `mlcache`)
+
+**Current reusable surface:**
+- `health_gateway/model` — `BackendHealth`, `AggregateStatus`, `GateDecision`
+- `health_gateway/response` — aggregate and readiness JSON renderers
+- `health_gateway/gate` — helpers for health-aware dispatch decisions
+- `health_gateway/aggregate` — interface for future `http_client`-based fetching
+- `health_gateway/cache` — interface for future `mlcache`-backed lookup
+
+**Current adapter scope:**
+- shift the baseline adapter to direct `$health_*` reads instead of simulated backend-variable parsing
+- build readiness / liveness / aggregate responses from the native scalar facts already present
+- keep richer backend-topology rendering as an explicit later subrequest path, not as a fake first-pass requirement
+
+**Future composition:**
+- fetch native healthcheck JSON through `http_client` when richer backend detail is actually needed
+- add `mlcache`-backed stale/hit/miss caching
+- compose `workflow` for health-aware routing and `session`/`feature_flags` for richer custom health surfaces
+
+**Composes with:** `workflow`, `http_client`, `mlcache`, `session`, `feature_flags`
+
+### Deferred hybrid adapters and follow-ons
 
 | Item | Why Deferred |
 |---|---|
+| Redis-backed cache / sticky-session adjuncts | `$redis_*` is now available, but Milestone 2 modules only need hooks for future composition, not a dedicated adapter family yet |
+| Consul-backed config / routing bridges | `$consul_*` is useful, but dynamic config and service-routing modules should wait for a concrete consumer rather than inflate the current milestone |
+| Prometheus-aware adaptive policy | `$prometheus_*` can enrich rate-limit, tracing, or circuit policy later, but `metrics` already covers scripted emission and the read-side use case is still optional |
+| Cache-tag workflow orchestration | `$cache_tags_*` and purge endpoints are valuable once selective purge becomes a central scripted workflow, not before |
 | Phantom token / OAuth introspection | RFC 9068 JWTs making it less urgent; extend JWT module when use case is concrete |
 | Worker event bus | Depends on native shared-memory signal ring landing in `nginz` first |
 | Geo/IP policy | Depends on native geo module (`libmaxminddb` binding) landing in `nginz` |
@@ -656,17 +527,18 @@ The reason for this order is ecosystem leverage: each of the top three removes a
 
 ### Sequencing rationale
 
-| Sprint | Theme | Native Modules Consumed | Scripted Modules Composed |
+| Sub-sprint | Theme | Native surfaces consumed | Why this order |
 |---|---|---|---|
-| 4 | Native-aware policy | ratelimit, canary, circuit-breaker | authz, metrics, session, feature_flags, workflow, http_client |
-| 5 | Observability + tracing | requestid, healthcheck | workflow, http_client, metrics, session |
-| 6 | Security composition | jwt, oidc, nftset, ratelimit, waf | authz, session, feature_flags, http_client, metrics |
+| `4A` | Single-signal policy adapters | `ratelimit`, `canary`, `circuit-breaker` | Establish the baseline hybrid pattern: native fact → typed Gleam context → policy response |
+| `4B` | Cross-cutting bridges | `requestid`, `oidc` | Land tracing and identity building blocks before higher-order composition needs to consume them |
+| `5A` | Security composition | `jwt`, `oidc`, `ratelimit`, `waf`, optional `nftset` | `security_gateway` now has the native WAF facts it was waiting on and can compose earlier modules cleanly |
+| `5B` | Health aggregation | `healthcheck` plus later scripted fetch/cache composition | `health_gateway` is now unblocked by `$health_*`, but it remains the more orchestration-heavy capstone |
 
-Each sprint produces modules that **read native variables and compose scripted policy on top** — the hybrid model where native Zig provides performance primitives and njs provides the policy shell. Every module in this batch would be impossible without the native layer, and equally impossible without the scripted composition layer.
+Each sub-sprint produces modules that **read native facts and compose scripted policy on top** — the hybrid model where native Zig provides performance primitives and njs provides the policy shell. Every module in this batch depends on the native layer, but the reusable Gleam library surface remains the real design target.
 
 ### Recommended implementation sequence inside Milestone 2
 
-The sprint groupings above are thematic. The actual implementation order should be **dependency-first** so we grow canonical building blocks and avoid returning later just to rewire early modules.
+The sub-sprint labels above are roadmap communication. The actual implementation order should still be **dependency-first** so we grow canonical building blocks and avoid returning later just to rewire early modules.
 
 Principle: build the smallest reusable library surfaces first, then layer broader composition on top of them.
 
@@ -724,7 +596,7 @@ This lets `security_gateway` consume a stable OIDC-side building block instead o
 
 Sixth, build the multi-signal composition layer only after the narrower bridges exist:
 
-- consumes JWT, OIDC, and ratelimit signals together
+- consumes JWT, OIDC, ratelimit, and WAF signals together
 - benefits from the earlier pattern work in `ratelimit_policy` and `oidc_bridge`
 - is the first true Milestone 2 “policy shell over multiple primitives” module
 
@@ -734,14 +606,15 @@ This is where we intentionally start composing prior building blocks instead of 
 
 Implement last.
 
-This is the least canonical early module because its best version wants several pieces at once:
+This is still the least canonical early module because its best version wants several pieces at once:
 
-- health data fetching through `http_client`
+- direct scalar health facts from `$health_*`
+- optional richer health data fetching through `http_client`
 - routing/gating through `workflow`
 - caching through `mlcache`
 - possibly richer custom health shaping with `session` / `feature_flags`
 
-Placing it last avoids building a fake first pass and then circling back to rewire subrequest fetching, cache semantics, and routing integration.
+Placing it last avoids building a fake first pass and then circling back to rewire richer health topology fetching, cache semantics, and routing integration.
 
 ### Why this order minimizes rewiring
 
@@ -759,7 +632,7 @@ That gives us a canonical growth path:
 - then compose multiple signals
 - only then build the orchestration-heavy health gateway
 
-If we start with `health_gateway` or `security_gateway`, we will almost certainly come back later to re-thread tracing, identity mapping, caching, or workflow semantics. This order tries to avoid that first-milestone-style return trip.
+If we start with `health_gateway`, we will almost certainly come back later to re-thread richer topology fetches, caching, or workflow semantics. `security_gateway` moved forward specifically because the native WAF facts now exist, making it a better earlier composition target than it was before.
 
 ### Practical rollout order
 

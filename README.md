@@ -57,7 +57,7 @@ nginx is the center. Both `nginz` and `nginz-njs` are independent module sets th
 
 Both module sets are fully compatible with the official nginx distribution. You can use neither, either, or both together — they compose through standard nginx primitives: variables, locations, subrequests, and the njs scripting surface.
 
-When used together, native modules handle the performance-critical work (signature verification, rate counters, shared-memory state) and expose results as nginx variables; scripted modules read those variables and apply policy logic in Gleam.
+When used together, native modules handle the performance-critical work (signature verification, rate counters, shared-memory state) and expose results as nginx variables, subrequest endpoints, or both; scripted modules read those surfaces and apply policy logic in Gleam.
 
 Inside `nginz-njs` itself, composability happens at the Gleam module boundary first. The deployable nginx module is the outer shell around a reusable Gleam package.
 
@@ -144,9 +144,11 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary header/tagging layer: native canary decision → typed canary context → `X-Canary` visibility and future composition hooks | partial |
 | [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback layer: native circuit state → typed fallback policy → state-aware degraded responses | partial |
 | [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | partial |
-| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Scripted health aggregation and readiness gating over backend health inputs, with future interfaces for native healthcheck fetching and cache-backed composition | partial |
-| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Unified security policy composition: JWT, OIDC, and rate-limit signals → typed rules → allow/deny/challenge decisions | partial |
+| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Scripted health aggregation and readiness gating over native `$health_*` signals, with richer healthcheck fetching and cache-backed composition as follow-on layers | partial |
+| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Unified security policy composition: JWT, OIDC, rate-limit, and WAF signals → typed rules → allow/deny/challenge decisions | partial |
 | [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | OIDC identity mapping layer: native OIDC claims → authz claims, feature-flag keys, and inline session-binding metadata | partial |
+
+Current roadmap focus keeps these partial hybrid modules in a dependency-driven Milestone 2 sequence: `4A` (`ratelimit_policy`, `canary_policy`, `circuit_breaker_policy`), `4B` (`request_tracing`, `oidc_bridge`), `5A` (`security_gateway`), then `5B` (`health_gateway`). See [ROADMAP.md](ROADMAP.md) for the full sequencing rationale and deferred hybrid-adapter follow-ons.
 
 ## Setup
 
@@ -401,6 +403,7 @@ Scripted modules in this repo orchestrate and compose the native primitives:
 - `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
 - `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
 - `nginz_njs_feature_flags` can later use njs built-in `ngx.shared` for runtime-togglable flag state
+- Milestone 2 extends that pattern with hybrid policy modules that consume native variables like `$waf_*` and `$health_*` while keeping richer composition in reusable Gleam libraries
 
 See [ROADMAP.md](ROADMAP.md) for the scripted module roadmap.
 

@@ -1,14 +1,15 @@
 # nginz_njs_security_gateway
 
-Unified security policy composition. The pure policy layer reads `$jwt_claim_*`, `$oidc_claim_*`, and `$ratelimit_result` nginx variables and composes them into a single allow/deny/challenge decision in Gleam.
+Unified security policy composition. The pure policy layer reads `$jwt_claim_*`, `$oidc_claim_*`, `$ratelimit_result`, and now potentially `$waf_*` nginx variables, then composes them into a single allow/deny/challenge decision in Gleam.
 
 ## Roadmap position
 
-Sprint 6 (security composition) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `jwt`, `oidc`, and `ratelimit` modules. Composes with `authz`, `session`, `feature_flags`, `http_client`, `metrics`, and `response_transform`.
+Sprint 5A (security composition) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `jwt`, `oidc`, `ratelimit`, and optionally `waf` modules. Composes with `authz`, `session`, `feature_flags`, `http_client`, `metrics`, and `response_transform`.
 
 ## Design goals
 
 - Read `$jwt_claim_*`, `$oidc_claim_*`, and `$ratelimit_result` from nginx variables set by native modules
+- Read `$waf_result`, `$waf_rule_id`, `$waf_score`, and `$waf_category` from the native `waf` module when present
 - Compose security signals into a single `SecurityDecision` using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
 - Render custom error responses per denial reason (401, 403, 429)
 - Render challenge pages for borderline requests (login redirect, CAPTCHA placeholder)
@@ -36,10 +37,13 @@ The evaluator is side-effect free: it transforms native module variables into ty
 - Native `jwt` module: verifies JWT signatures, sets `$jwt_claim_*` variables
 - Native `oidc` module: handles OIDC flows, sets `$oidc_claim_*` variables
 - Native `ratelimit` module: manages shared-memory counters, sets `$ratelimit_*` variables
+- Native `waf` module: exposes `$waf_result`, `$waf_rule_id`, `$waf_score`, `$waf_category`
 
 Native modules run in ACCESS phase; this module runs in CONTENT phase.
 
 Native modules own signal generation (cryptographic verification, counter logic). This module owns policy composition and response shaping.
+
+The important roadmap change is that WAF is no longer blocked on “no njs-facing surface.” The next implementation pass can treat WAF as a real upstream signal source rather than a placeholder type.
 
 ## Exports
 
@@ -111,6 +115,9 @@ http {
 - Composes default policy: deny if rate-limited, then require any auth (JWT or OIDC)
 - Default policy is hardcoded — not configurable via nginx variables
 
+**Next adapter step (now unblocked)**
+- wire `$waf_result`, `$waf_rule_id`, `$waf_score`, and `$waf_category` into real `WafDetection` signals instead of leaving WAF as roadmap-only composition
+
 **Integration tests**
 - `tests/basic/` — 8 scenarios: JWT allow, OIDC allow, anonymous deny, rate limit deny, rate limit ok, challenge redirect, challenge allow
 
@@ -149,6 +156,19 @@ import response_transform/eval
 let body = sg_response.json_403("ip blocked")
 ```
 
+### waf — native security signal integration (now unblocked)
+
+The native `waf` module now exposes the variables this module wanted earlier:
+
+```nginx
+$waf_result
+$waf_rule_id
+$waf_score
+$waf_category
+```
+
+That means the next implementation pass can promote WAF from a placeholder signal category to a real composed input in security policy.
+
 ## Completion scope
 
 `security_gateway` is complete for its core contract as a security policy composition layer:
@@ -159,7 +179,7 @@ let body = sg_response.json_403("ip blocked")
 - nginx handlers: evaluate_security, evaluate_with_metrics, challenge_handler variants
 - Integration test coverage for all handler variants
 
-Future work focuses on composition through existing modules (`metrics`, `response_transform`) and native module integration (IP reputation, WAF) rather than new handler logic.
+Future work focuses on composition through existing modules (`metrics`, `response_transform`) and deeper native-signal integration rather than new handler logic.
 
 ## Phased implementation plan
 
@@ -175,14 +195,19 @@ Future work focuses on composition through existing modules (`metrics`, `respons
 - [x] `security_gateway/challenge` — challenge page renderers
 - [x] Integration test scenarios
 
-### Phase 3 — composition and native integration (future)
+### Phase 3 — native signal expansion (now unblocked)
 
 - [ ] Entry point handlers compose `security_gateway/metrics` for decision emission
-- [ ] IP reputation integration (requires nftset in nginz native modules)
-- [ ] WAF detection integration (requires WAF njs-facing variables)
+- [ ] Wire `$waf_result`, `$waf_rule_id`, `$waf_score`, and `$waf_category` into real `WafDetection` signals
+- [ ] Add score- and category-aware security rules on top of WAF variables
+
+### Phase 4 — broader composition (future)
+
+- [ ] IP reputation integration (requires nftset packaged the way we want in deployment)
 - [ ] Dynamic policy reload from config
 - [ ] Per-route differentiated security policies
 - [ ] CAPTCHA service integration for challenge responses
+- [ ] Prometheus-aware security posture using `$prometheus_error_rate`
 
 ## TDD plan
 
@@ -201,7 +226,7 @@ Future work focuses on composition through existing modules (`metrics`, `respons
 
 ## Limitations
 
-- **IP reputation is a stub.** The `IpReputation` signal type exists but nftset is not packageable as a standalone `--add-module` module. Full integration requires nftset added to `build_package.zig`'s `module_infos` in the nginz repo.
-- **WAF detection is a stub.** The `WafDetection` signal type exists but WAF runs in ACCESS phase with no njs-facing variables.
+- **IP reputation is still partial.** nftset variables exist, but deployment/package shape may still determine how broadly we can rely on them in composed policy.
+- **WAF is now available but not yet wired.** The native variables exist; the next implementation pass should turn them into real `WafDetection` signals.
 - **Default policy is hardcoded.** The entry point uses a single composed policy. Per-route customization requires variable-driven policy selection.
 - **Challenge responses are static.** CAPTCHA integration requires an external service for challenge verification.
