@@ -43,10 +43,11 @@ pub type RateLimitHeaders {
 }
 
 /// Parse a rate limit result string from the native module.
+/// The native module sets $ratelimit_result to "allow" or "deny".
 pub fn parse_result(value: String) -> RateLimitResult {
   case value {
-    "allowed" -> Allowed
-    "denied" -> Denied
+    "allow" -> Allowed
+    "deny" -> Denied
     _ -> Unknown
   }
 }
@@ -112,8 +113,8 @@ pub fn summary(ctx: RateLimitContext) -> String {
 
 fn result_to_string(r: RateLimitResult) -> String {
   case r {
-    Allowed -> "allowed"
-    Denied -> "denied"
+    Allowed -> "allow"
+    Denied -> "deny"
     Unknown -> "unknown"
   }
 }

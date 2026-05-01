@@ -1,10 +1,8 @@
-import canary_policy/feature_flags.{
-  FlagOverride, canary_flag, check_override, stable_flag,
-}
+import canary_policy/feature_flags.{canary_flag, check_override, stable_flag}
 import canary_policy/metrics
 import canary_policy/model.{
-  Canary, CanaryContext, Stable, Unknown, canary_headers, context,
-  parse_decision, stable_headers, summary, with_headers,
+  Canary, Stable, Unknown, canary_headers, context, parse_decision,
+  stable_headers, summary, with_headers,
 }
 import canary_policy/session
 import gleeunit

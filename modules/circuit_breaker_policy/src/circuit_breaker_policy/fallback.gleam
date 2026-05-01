@@ -2,9 +2,8 @@
 //// error bodies when the circuit is open.
 
 import circuit_breaker_policy/model.{
-  type CircuitContext, type FallbackConfig, Closed, HalfOpen, Open, Unknown,
+  type CircuitContext, Closed, HalfOpen, Open, Unknown,
 }
-import gleam/int
 
 /// JSON error body for an open circuit.
 pub fn json_error(message: String) -> String {

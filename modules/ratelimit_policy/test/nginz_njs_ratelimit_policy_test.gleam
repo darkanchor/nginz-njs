@@ -15,11 +15,11 @@ pub fn main() {
 // --- model tests ---
 
 pub fn parse_result_allowed_test() {
-  model.parse_result("allowed") |> should.equal(Allowed)
+  model.parse_result("allow") |> should.equal(Allowed)
 }
 
 pub fn parse_result_denied_test() {
-  model.parse_result("denied") |> should.equal(Denied)
+  model.parse_result("deny") |> should.equal(Denied)
 }
 
 pub fn parse_result_unknown_test() {
@@ -28,7 +28,7 @@ pub fn parse_result_unknown_test() {
 }
 
 pub fn context_from_strings_test() {
-  let ctx = model.context("denied", "192.168.1.1", "ip", "3")
+  let ctx = model.context("deny", "192.168.1.1", "ip", "3")
   ctx.result |> should.equal(Denied)
   ctx.key |> should.equal("192.168.1.1")
   ctx.source |> should.equal("ip")
@@ -36,7 +36,7 @@ pub fn context_from_strings_test() {
 }
 
 pub fn context_default_cost_test() {
-  let ctx = model.context("allowed", "key", "variable", "not_a_number")
+  let ctx = model.context("allow", "key", "variable", "not_a_number")
   ctx.cost |> should.equal(1)
 }
 
@@ -62,9 +62,9 @@ pub fn default_error_body_test() {
 }
 
 pub fn summary_test() {
-  let ctx = model.context("denied", "10.0.0.1", "ip", "2")
+  let ctx = model.context("deny", "10.0.0.1", "ip", "2")
   model.summary(ctx)
-  |> should.equal("key=10.0.0.1 source=ip cost=2 result=denied")
+  |> should.equal("key=10.0.0.1 source=ip cost=2 result=deny")
 }
 
 // --- headers tests ---
@@ -127,25 +127,25 @@ pub fn text_error_test() {
 // --- metrics tests ---
 
 pub fn decision_counter_allowed_test() {
-  let ctx = model.context("allowed", "key", "ip", "1")
+  let ctx = model.context("allow", "key", "ip", "1")
   let m = metrics.decision_counter(ctx, "/api")
   line.render_statsd(m)
   |> should.equal(
-    "nginz.ratelimit_decision_total:1|c|#result:allowed,source:ip,route:/api",
+    "nginz.ratelimit_decision_total:1|c|#result:allow,source:ip,route:/api",
   )
 }
 
 pub fn decision_counter_denied_test() {
-  let ctx = model.context("denied", "key", "variable", "1")
+  let ctx = model.context("deny", "key", "variable", "1")
   let m = metrics.decision_counter(ctx, "/api")
   line.render_statsd(m)
   |> should.equal(
-    "nginz.ratelimit_decision_total:1|c|#result:denied,source:variable,route:/api",
+    "nginz.ratelimit_decision_total:1|c|#result:deny,source:variable,route:/api",
   )
 }
 
 pub fn denied_counter_test() {
-  let ctx = model.context("denied", "key", "ip", "1")
+  let ctx = model.context("deny", "key", "ip", "1")
   let m = metrics.denied_counter(ctx, "/api")
   line.render_statsd(m)
   |> should.equal("nginz.ratelimit_denied_total:1|c|#source:ip,route:/api")

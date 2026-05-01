@@ -36,7 +36,7 @@ pub fn all_of(rules: List(Rule)) -> Rule {
 /// At least one rule must return Allow.
 pub fn any_of(rules: List(Rule)) -> Rule {
   fn(signals: List(SecuritySignal)) -> SecurityDecision {
-    list.fold_until(rules, Deny(403, "no rule matched"), fn(acc, rule) {
+    list.fold_until(rules, Deny(403, "no rule matched"), fn(_acc, rule) {
       case rule(signals) {
         Allow -> list.Stop(Allow)
         decision -> list.Continue(decision)

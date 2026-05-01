@@ -1,8 +1,8 @@
 //// Workflow integration for circuit breaker policy. Provides wrappers that
 //// skip upstream calls when the circuit is open and serve fallback responses.
 
-import gleam/javascript/promise.{type Promise}
-import workflow/pipeline.{type Step, type StepResult}
+import gleam/javascript/promise
+import workflow/pipeline.{type Step}
 
 /// Wrap a workflow step to skip execution when the circuit is open.
 /// Returns a 503 fallback body immediately instead of calling upstream.

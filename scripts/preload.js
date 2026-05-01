@@ -1,3 +1,14 @@
 import { ensureBuild } from "./harness.js";
 
-ensureBuild();
+// Extract the module name from the test file path passed via CLI args.
+// e.g., "bun test modules/ratelimit_policy/tests/native/do.test.js" → "ratelimit_policy"
+// When running "bun run test" (no file), build everything.
+function extractModuleName() {
+  for (const arg of process.argv) {
+    const m = arg.match(/modules\/([^/]+)\/tests?\//);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+ensureBuild(extractModuleName());

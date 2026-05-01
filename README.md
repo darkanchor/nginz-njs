@@ -140,7 +140,7 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
-| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping: native ratelimit variables → typed decision context → headers and custom 429 bodies | partial |
+| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping: native ratelimit variables → typed decision context → headers and custom 429 bodies | flawed |
 | [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary header/tagging layer: native canary decision → typed canary context → `X-Canary` visibility and future composition hooks | partial |
 | [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback layer: native circuit state → typed fallback policy → state-aware degraded responses | partial |
 | [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | partial |

@@ -7,7 +7,7 @@ import njs/ngx.{type JsObject}
 import ratelimit_policy/headers
 import ratelimit_policy/model.{
   type PolicyDecision, type RateLimitContext, Allowed, Denied, DenyWith,
-  InjectHeaders, PassThrough, RateLimitContext, RateLimitHeaders, Unknown,
+  InjectHeaders, PassThrough, Unknown,
 }
 import ratelimit_policy/response
 

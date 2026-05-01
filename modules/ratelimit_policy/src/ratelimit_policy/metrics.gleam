@@ -26,8 +26,8 @@ pub fn denied_counter(ctx: RateLimitContext, route: String) -> Metric {
 
 fn result_tag(r: RateLimitResult) -> String {
   case r {
-    Allowed -> "allowed"
-    Denied -> "denied"
+    Allowed -> "allow"
+    Denied -> "deny"
     Unknown -> "unknown"
   }
 }

@@ -176,6 +176,8 @@ Follow the nginz ROADMAP (`../nginz/ROADMAP.md`) and `../nginz/docs/design-nativ
 - **Here**: policy rules, subrequest orchestration, JWT claim mapping, flag evaluation, response templating, webhook glue
 - **In nginz**: WAF engine, rate limit counters, shared-memory state, upstream balancer internals, TLS/ACME, brotli/zstd
 
+**When native module issues or limitations are confirmed against designs:** do not go bypass or invent workarounds. Stop and report the finding to the human. Let them decide the path forward (native fix, design change, or accepted limitation). Document the finding for reference.
+
 ### Module catalog and roadmap priority
 
 `ROADMAP.md` has the full scripted module roadmap. Module metadata (name, version, native deps) lives in each module's `gleam.toml` under `[metadata]`. Priority order:
