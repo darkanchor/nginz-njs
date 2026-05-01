@@ -60,7 +60,8 @@ Webhook signing and callback-verification for nginx written in Gleam. Composes `
 ## Cross-module composition boundary
 
 - `webhook` consumes `http_client` for outbound delivery (`deliver`)
-- `webhook` consumes `metrics` (via transitive dep on `nginz_njs_metrics` helpers)
+- `webhook` consumes `http_client` directly for outbound delivery today
+- `metrics` hooks remain future operational glue, not part of the current completion bar
 - `mlcache` may later cache idempotency/replay metadata, but `webhook` should not absorb general cache policy
 - `response_transform` may later shape callback payloads
 
@@ -105,7 +106,7 @@ Goal: support callback verification without collapsing all protocol behavior int
 - [x] separate signature parsing (`extract_signature`) from business-policy decisions (`verify_request`)
 - [x] case-insensitive header lookup and signature comparison
 
-### Phase 4 — add operational glue
+### Phase 4 — add operational glue (future, non-blocking)
 
 - [ ] add idempotency/replay patterns via `mlcache`
 - [ ] add payload normalization via `response_transform`
@@ -117,7 +118,7 @@ Goal: support callback verification without collapsing all protocol behavior int
 - [x] unit-test HMAC signing determinism and round-trip verification (9 tests)
 - [x] unit-test signature extraction and full request verification (6 tests)
 - [x] unit-test DeliveryError discriminators (2 tests)
-- [x] add integration coverage for signing, fixture, and verification flows (9 tests)
+- [x] add integration coverage for signing, fixture, verification, and delivery flows (11 tests)
 
 ## Atomic commit strategy
 
@@ -130,6 +131,6 @@ Goal: support callback verification without collapsing all protocol behavior int
 ## Verification checklist
 
 - [x] `bun scripts/test.js webhook` — 28 unit tests pass
-- [x] `bun test ./modules/webhook/tests/basic/do.test.js` — 9 integration tests pass
+- [x] `bun test ./modules/webhook/tests/basic/do.test.js` — 11 integration tests pass
 - [x] `bun run build:module webhook` — builds successfully
 - [x] `bun scripts/test.js` — all 9 modules pass, zero regressions

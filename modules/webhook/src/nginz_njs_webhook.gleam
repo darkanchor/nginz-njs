@@ -2,6 +2,7 @@ import gleam/int
 import gleam/javascript/array
 import gleam/javascript/promise.{type Promise}
 import gleam/json
+import gleam/result
 import http_client/fetch
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
@@ -65,7 +66,33 @@ fn verify_demo(r: HTTPRequest) -> Promise(Nil) {
 /// Requires an upstream fixture at `/__fixture/upstream` or a real target.
 ///
 fn deliver_demo(r: HTTPRequest) -> Promise(Nil) {
-  let config = spec.demo_outbound()
+  let vars = http.get_variables(r)
+  let config =
+    spec.WebhookConfig(
+      ..spec.demo_outbound(),
+      url: case ngx.get(vars, "webhook_demo_url") {
+        Ok(v) -> ngx.to_string(v)
+        Error(_) -> spec.demo_outbound().url
+      },
+      timeout_ms: case ngx.get(vars, "webhook_demo_timeout_ms") {
+        Ok(v) ->
+          result.unwrap(
+            int.parse(ngx.to_string(v)),
+            spec.demo_outbound().timeout_ms,
+          )
+        Error(_) -> spec.demo_outbound().timeout_ms
+      },
+      retry_max_attempts: case
+        ngx.get(vars, "webhook_demo_retry_max_attempts")
+      {
+        Ok(v) ->
+          result.unwrap(
+            int.parse(ngx.to_string(v)),
+            spec.demo_outbound().retry_max_attempts,
+          )
+        Error(_) -> spec.demo_outbound().retry_max_attempts
+      },
+    )
   let payload = demo_payload()
   use result <- promise.await(deliver.deliver(config, payload))
   case result {

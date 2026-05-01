@@ -1,7 +1,7 @@
 name = "nginz_njs_webhook"
 version = "0.1.0"
 target = "javascript"
-description = "Webhook signing and verification scaffold for nginx: reusable webhook config and protocol glue"
+description = "Webhook signing, delivery composition, and callback verification for nginx"
 
 licences = ["Apache-2.0"]
 gleam = ">= 1.14.0"
@@ -12,7 +12,6 @@ gleam_javascript = ">= 0.11.0 and < 2.0.0"
 gleam_json = ">= 3.0.0 and < 4.0.0"
 ngs = ">= 1.0.8 and < 2.0.0"
 nginz_njs_http_client = { path = "../http_client" }
-nginz_njs_metrics = { path = "../metrics" }
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"

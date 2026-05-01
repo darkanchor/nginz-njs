@@ -136,4 +136,16 @@ describe("webhook — scaffold + signing", () => {
     const headerSig = fixtureRes.headers.get("X-Signature");
     expect(directSig).toBe(headerSig);
   });
+
+  test("deliver_demo signs and delivers to the upstream fixture", async () => {
+    const res = await fetch(`${TEST_URL}/deliver-demo`);
+    expect(res.status).toBe(202);
+    expect(await res.text()).toBe('{"delivered":true}');
+  });
+
+  test("deliver_demo surfaces upstream transport failures", async () => {
+    const res = await fetch(`${TEST_URL}/deliver-demo-fail`);
+    expect(res.status).toBe(502);
+    expect(await res.text()).toMatch(/^upstream failed:/);
+  });
 });

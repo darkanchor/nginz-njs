@@ -138,9 +138,9 @@ Shipped:
 - `clear_content_length` header filter to enable chunked transfer after body mutation
 - `transform` and `transform_with_status` body filter handlers; status read from nginx `$status`
 
-#### `webhook` — request signing and callback verification
+#### `webhook` — request signing, delivery composition, and callback verification
 
-**Status:** scaffold  
+**Status:** complete  
 **Blockers:** none (HMAC verification delegates to njs Web Crypto)
 
 Outbound request signing (HMAC-SHA256) and inbound callback verification. Lightweight protocol adaptation glue for third-party integrations.
