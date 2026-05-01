@@ -1,0 +1,26 @@
+name = "nginz_njs_oidc_bridge"
+version = "0.1.0"
+target = "javascript"
+description = "OIDC-to-session and OIDC-to-policy bridge: identity binding, claim mapping, token refresh, and feature flag integration for the native oidc module"
+
+licences = ["Apache-2.0"]
+gleam = ">= 1.14.0"
+
+[dependencies]
+gleam_stdlib = ">= 0.39.0 and < 2.0.0"
+gleam_javascript = ">= 0.11.0 and < 2.0.0"
+gleam_json = ">= 3.0.0 and < 4.0.0"
+ngs = ">= 1.0.8 and < 2.0.0"
+nginz_njs_authz = { path = "../authz" }
+nginz_njs_http_client = { path = "../http_client" }
+nginz_njs_session = { path = "../session" }
+nginz_njs_feature_flags = { path = "../feature_flags" }
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+
+[javascript]
+runtime = "bun"
+
+[metadata.native]
+nginz = ["oidc"]

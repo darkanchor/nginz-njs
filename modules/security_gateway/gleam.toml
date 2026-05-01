@@ -1,0 +1,28 @@
+name = "nginz_njs_security_gateway"
+version = "0.1.0"
+target = "javascript"
+description = "Unified security policy composition: JWT claims + IP reputation + rate limit → allow/deny/challenge decisions in Gleam"
+
+licences = ["Apache-2.0"]
+gleam = ">= 1.14.0"
+
+[dependencies]
+gleam_stdlib = ">= 0.39.0 and < 2.0.0"
+gleam_javascript = ">= 0.11.0 and < 2.0.0"
+gleam_json = ">= 3.0.0 and < 4.0.0"
+ngs = ">= 1.0.8 and < 2.0.0"
+nginz_njs_authz = { path = "../authz" }
+nginz_njs_http_client = { path = "../http_client" }
+nginz_njs_metrics = { path = "../metrics" }
+nginz_njs_session = { path = "../session" }
+nginz_njs_feature_flags = { path = "../feature_flags" }
+nginz_njs_response_transform = { path = "../response_transform" }
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+
+[javascript]
+runtime = "bun"
+
+[metadata.native]
+nginz = ["jwt", "oidc", "ratelimit"]
