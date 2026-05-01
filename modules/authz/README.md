@@ -21,6 +21,7 @@ Policy-based authorization for nginx written in Gleam. Rules are pure functions;
 | `main.enriched_check` | `js_content` | `check` + sets `X-Authz-Status` response header |
 | `main.enriched_jwt_check` | `js_content` | `jwt_check` + sets `X-Authz-Status` and `X-Authz-<Claim>` headers |
 | `main.enriched_remote_check` | `js_content` | `remote_check` + sets `X-Authz-Status` response header |
+| `main.session_gate` | `js_content` | Verifies a session cookie via the shared session store; returns 204 + `X-Session-Subject` or 401 |
 
 ## nginx configuration
 
@@ -180,6 +181,7 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - `tests/opa/` — remote OPA check, no native deps
 - `tests/cache/` — shared-dict cache, no native deps
 - `tests/enrich/` — header injection, no native deps
+- `tests/session/` — cross-module `session_gate` flow backed by the session bundle, no native deps
 - `tests/jwt/` — full JWT flow: native module verifies HS256, njs checks role (`make` required)
 
 ## Limitations
@@ -241,6 +243,7 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - [x] `bun test modules/authz/tests/opa/do.test.js` — remote OPA check passes
 - [x] `bun test modules/authz/tests/cache/do.test.js` — shared-dict cache passes
 - [x] `bun test modules/authz/tests/enrich/do.test.js` — header injection passes
+- [x] `bun test modules/authz/tests/session/do.test.js` — session-backed `session_gate` passes
 - [x] `bun test modules/authz/tests/jwt/do.test.js` — JWT integration passes (`make` required)
 - [ ] Manual: configure a real RBAC policy, hit with admin/user/guest tokens, verify log output
 - [ ] Load test: 10k req/s baseline through the `check` handler to measure njs overhead

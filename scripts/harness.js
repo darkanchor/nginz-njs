@@ -18,6 +18,12 @@ export function ensureBuild(moduleName) {
   if (result.exitCode !== 0) throw new Error("build failed");
 }
 
+function deployBundle(prefix, moduleName, targetName = "app.js") {
+  const source = join(ROOT, "dist", moduleName, "njs", "app.js");
+  const target = join(prefix, "njs", targetName);
+  copyFileSync(source, target);
+}
+
 function preparePrefix(moduleName) {
   // Use dist/<name>/ as prefix so js_path "njs/" resolves to dist/<name>/njs/
   const prefix = join(ROOT, "dist", moduleName);
@@ -27,11 +33,15 @@ function preparePrefix(moduleName) {
   return prefix;
 }
 
-export async function startNginx(configPath, moduleName) {
+export async function startNginx(configPath, moduleName, extraModules = []) {
   const prefix = preparePrefix(moduleName);
   const absConfig = isAbsolute(configPath)
     ? configPath
     : join(ROOT, configPath);
+
+  for (const extraModule of extraModules) {
+    deployBundle(prefix, extraModule, `${extraModule}.js`);
+  }
 
   // Deploy the config into dist/<module>/ so js_path "njs/" resolves to dist/<module>/njs/
   const deployedConfig = join(prefix, "nginx.conf");

@@ -126,6 +126,8 @@ server {
 
 `authz` exports a `session_gate` handler built on `session/store` and `session/cookie`. It is an `auth_request`-compatible endpoint: 204 + X-Session-Subject on a live session, 401 otherwise.
 
+This module's own integration coverage proves the underlying start / verify / end lifecycle, and `authz/tests/session/` now exercises `session_gate` as a cross-module consumer of the same cookie + store building blocks.
+
 ```nginx
 location /auth {
     internal;
@@ -143,6 +145,8 @@ location /api/ {
 ### feature_flags — `"session"` key type
 
 When `$ff_key_type = session`, `feature_flags` reads the session cookie → loads the subject → uses `ByUserId(subject)` for stable per-user bucketing. Requires `$session_dict`.
+
+If `$session_dict` is unset, the cookie is missing or invalid, or the session lookup misses, `feature_flags` falls back to its normal request-key path instead of failing the request. `feature_flags/tests/session/` covers both the successful session-subject path and the fallback behavior.
 
 ```nginx
 set $ff_key_type session;

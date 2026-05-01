@@ -43,6 +43,8 @@ set $ff_dark_mode_override on;   # force on regardless of rollout
 
 **Integration tests**
 - `tests/basic/` — 15 scenarios: on/off, bucket determinism/range/domain separation, force-on/force-off overrides, variants, describe handlers, and `js_set` evaluation
+- `tests/state/` — dict-backed runtime flag state via `mlcache`
+- `tests/session/` — cross-module session-key resolution via the session bundle, including request-key fallback
 
 ## Roadmap position
 
@@ -74,6 +76,8 @@ The evaluator should stay entirely side-effect free. Configuration lookup and re
 
 - njs built-in `ngx.shared` for runtime-togglable flag state (no native nginz dependency needed)
 - hot reload or sticky overrides backed by shared dict
+
+When `ff_key_type=session`, session-backed targeting only upgrades to `ByUserId(subject)` if the session cookie can be read and `$session_dict` resolves that session successfully. Otherwise evaluation falls back to the normal request key path (`$ff_key`, or remote address when unset).
 
 The module is production-useful in pure scripted mode. `ngx.shared` improves dynamism, not defines the evaluation model.
 
@@ -150,6 +154,7 @@ Goal: improve operability without disturbing the pure evaluator.
 - [x] `bun scripts/test.js feature_flags` — 37 unit tests pass
 - [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 15 integration tests pass
 - [x] `bun test modules/feature_flags/tests/state/do.test.js` — dict-backed state 5 tests pass
+- [x] `bun test modules/feature_flags/tests/session/do.test.js` — session-key resolution and fallback pass
 - [x] Manual: set `rollout_pct=50`, send 1000 requests with random user ids, verify ~50% get `"1"`
 - [x] Manual: set `rollout_pct=0`, verify all requests get `"0"` regardless of key
 - [x] Manual: set `rollout_pct=100`, verify all requests get `"1"` regardless of key

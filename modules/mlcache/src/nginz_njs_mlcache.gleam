@@ -1,4 +1,6 @@
+import gleam/int
 import mlcache/model
+import mlcache/shared
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 
@@ -8,7 +10,94 @@ fn describe(r: HTTPRequest) -> Nil {
   |> http.return_text(r, 200, _)
 }
 
+fn put_entry(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let key = string_var(vars, "arg_key", "")
+  case key {
+    "" -> http.return_text(r, 400, "key required")
+    _ -> {
+      let value = string_var(vars, "arg_value", "")
+      let config =
+        model.CacheConfig(
+          backend: model.SharedDict,
+          refresh_policy: model.RefreshOnMiss,
+          ttl_seconds: int_var(vars, "arg_ttl", 60),
+          stale_ttl_seconds: int_var(vars, "arg_stale", 0),
+        )
+      shared.put("cache", key, value, config)
+      http.return_text(r, 200, "ok")
+    }
+  }
+}
+
+fn get_entry(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let key = string_var(vars, "arg_key", "")
+  case key {
+    "" -> http.return_text(r, 400, "key required")
+    _ -> {
+      let result = shared.get("cache", key, int_var(vars, "arg_stale", 0))
+      http.return_text(r, 200, describe_lookup(result))
+    }
+  }
+}
+
+fn try_lock_entry(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let key = string_var(vars, "arg_key", "")
+  case key {
+    "" -> http.return_text(r, 400, "key required")
+    _ ->
+      case shared.try_lock("cache", key, int_var(vars, "arg_ttl_ms", 1000)) {
+        True -> http.return_text(r, 200, "1")
+        False -> http.return_text(r, 200, "0")
+      }
+  }
+}
+
+fn release_lock_entry(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let key = string_var(vars, "arg_key", "")
+  case key {
+    "" -> http.return_text(r, 400, "key required")
+    _ -> {
+      shared.release_lock("cache", key)
+      http.return_text(r, 200, "ok")
+    }
+  }
+}
+
+fn describe_lookup(result: model.LookupResult) -> String {
+  case result {
+    model.Hit(value) -> "hit:" <> value
+    model.Stale(value) -> "stale:" <> value
+    model.Miss -> "miss"
+  }
+}
+
+fn string_var(vars: JsObject, key: String, default: String) -> String {
+  case ngx.get(vars, key) {
+    Ok(value) -> ngx.to_string(value)
+    Error(_) -> default
+  }
+}
+
+fn int_var(vars: JsObject, key: String, default: Int) -> Int {
+  case ngx.get(vars, key) {
+    Ok(value) ->
+      case int.parse(ngx.to_string(value)) {
+        Ok(parsed) -> parsed
+        Error(_) -> default
+      }
+    Error(_) -> default
+  }
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("describe", describe)
+  |> ngx.merge("put_entry", put_entry)
+  |> ngx.merge("get_entry", get_entry)
+  |> ngx.merge("try_lock_entry", try_lock_entry)
+  |> ngx.merge("release_lock_entry", release_lock_entry)
 }

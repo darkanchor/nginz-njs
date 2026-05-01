@@ -30,9 +30,12 @@ Two-level cache for nginx written in Gleam. Reusable cache semantics and a `ngx.
 
 **`nginz_njs_mlcache.gleam`**
 - `describe` — returns a stable summary of the default cache config
+- `put_entry`, `get_entry` — runtime probe handlers for shared-dict put/get semantics
+- `try_lock_entry`, `release_lock_entry` — runtime probe handlers for per-key lock behavior
 
 **Integration tests**
 - `tests/basic/` — verifies the descriptive path with stock nginx only
+- `tests/runtime/` — verifies shared-dict hit/stale/miss transitions and lock acquisition/release
 
 ## API reference
 
@@ -140,7 +143,7 @@ All three downstream modules now consume mlcache directly — see the consumers 
 ### Phase 2 — add pure fetch-on-miss helpers ✓
 
 - [x] define lookup result transitions and refresh flow helpers (`mlcache/lookup`)
-- [ ] document how consumer modules should own keys and invalidation semantics
+- [x] document how consumer modules should own keys and invalidation semantics
 - [x] keep cache policy reusable and domain-agnostic
 
 ### Phase 3 — add backing-store adapters ✓
@@ -153,7 +156,8 @@ All three downstream modules now consume mlcache directly — see the consumers 
 
 - [x] unit-test config summaries first
 - [x] add pure tests for refresh-policy helpers before runtime store work
-- [x] backing-store behavior integration-tested via `authz/tests/cache/` and `feature_flags/tests/state/`
+- [x] dict-backed consumer integration paths covered via `authz/tests/cache/`, `feature_flags/tests/state/`, and `session/tests/store/`
+- [x] direct integration coverage for stale-window serving and `try_lock` / `release_lock` contention paths via `tests/runtime/`
 
 ## Cross-module consumers
 
@@ -167,6 +171,7 @@ All three downstream modules now consume mlcache directly — see the consumers 
 
 - [x] `bun scripts/test.js mlcache` — 23 unit tests pass
 - [x] `bun test modules/mlcache/tests/basic/do.test.js` — basic integration passes
+- [x] `bun test modules/mlcache/tests/runtime/do.test.js` — stale-window and lock runtime probes pass
 - [x] `bun test modules/authz/tests/cache/do.test.js` — authz cache backed by mlcache passes
 - [x] `bun test modules/feature_flags/tests/state/do.test.js` — feature_flags dict-backed state passes
 - [x] `bun test modules/session/tests/store/do.test.js` — session store backed by mlcache passes

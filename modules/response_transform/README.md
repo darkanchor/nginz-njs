@@ -32,7 +32,7 @@ Response transformation library for nginx written in Gleam. Reusable plan-based 
 - `encode_object(fields)` — encode back to a JSON object string
 - Non-parseable bodies (e.g. non-string field values) pass through unchanged
 
-**`nginz_njs_session.gleam`**
+**`nginz_njs_response_transform.gleam`**
 - `describe` — stable plan summary
 - `preview_plan` — plan summary prefixed with "preview: "
 - `clear_content_length` — `js_header_filter` that removes the upstream Content-Length so nginx falls back to chunked transfer after body mutation
