@@ -23,7 +23,13 @@
       "Bash(xargs ls *)",
       "Bash(chmod +x /home/kaiwu/Documents/gitea/nginz-njs/.githooks/pre-push)",
       "Bash(xargs sed *)",
-      "Bash(KEEP_LOGS=1 bun test modules/authz/tests/cache/do.test.js)"
+      "Bash(KEEP_LOGS=1 bun test modules/authz/tests/cache/do.test.js)",
+      "Bash(KEEP_LOGS=1 bun test modules/response_transform/tests/transform/do.test.js)",
+      "Bash(pkill -f \"objs/nginx\")",
+      "Bash(/home/kaiwu/Documents/gitea/nginz-njs/submodules/nginx/objs/nginx *)",
+      "Bash(curl -v http://localhost:8888/transform)",
+      "Bash(kill %1)",
+      "Bash(curl -v --max-time 5 http://localhost:8888/transform)"
     ]
   }
 }

@@ -23,6 +23,6 @@ describe("session — scaffold demo", () => {
   test("describe returns stable session summary", async () => {
     const res = await fetch(`${TEST_URL}/describe`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("sid backend=shared_dict ttl=3600 same_site=Lax");
+    expect(await res.text()).toBe("sid backend=shared_dict ttl=3600 rotate=0 same_site=Lax");
   });
 });

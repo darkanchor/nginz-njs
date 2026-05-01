@@ -135,9 +135,9 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | complete |
 | [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
 | [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | complete |
-| [`nginz_njs_session`](modules/session/README.md) | Session-state scaffold with reusable session modeling targeting njs built-in `ngx.shared` backing | scaffold |
-| [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache scaffold with reusable cache semantics targeting njs built-in `ngx.shared` backing | scaffold |
-| [`nginz_njs_response_transform`](modules/response_transform/README.md) | Response/body-shaping scaffold for reusable transform plans | scaffold |
+| [`nginz_njs_session`](modules/session/README.md) | Cookie modeling, session lifecycle, `ngx.shared`-backed store; consumed by authz (`session_gate`) and feature_flags (session key type) | complete |
+| [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache with `ngx.shared` adapter, stale/hit/miss semantics, stampede-collapse; backing layer for authz, feature_flags, and session | complete |
+| [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing and verification scaffold built for composition with http_client | scaffold |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Metrics formatting and forwarding scaffold for cross-module instrumentation | scaffold |
 

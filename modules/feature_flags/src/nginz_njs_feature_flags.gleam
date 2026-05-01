@@ -8,6 +8,9 @@ import feature_flags/state
 import gleam/int
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
+import session/cookie as session_cookie
+import session/model as session_model
+import session/store as session_store
 
 fn read_flag_from_vars(vars: JsObject, name: String) -> Flag {
   let enabled = case ngx.get(vars, "ff_" <> name <> "_enabled") {
@@ -58,7 +61,37 @@ fn resolve_key(r: HTTPRequest) -> evaluation.BucketKey {
   case key_type {
     "user_id" -> ByUserId(key_val)
     "remote_addr" -> ByRemoteAddr(key_val)
+    "session" -> resolve_session_key(r, vars, key_val)
     _ -> ByRequestId(key_val)
+  }
+}
+
+fn resolve_session_key(
+  r: HTTPRequest,
+  vars: ngx.JsObject,
+  fallback: String,
+) -> evaluation.BucketKey {
+  let dict_name = case ngx.get(vars, "session_dict") {
+    Ok(v) -> ngx.to_string(v)
+    Error(_) -> ""
+  }
+  case dict_name {
+    "" -> ByRequestId(fallback)
+    dict -> {
+      let descriptor = session_model.default_descriptor()
+      case http.get_header_in(r, "cookie") {
+        Error(_) -> ByRequestId(fallback)
+        Ok(cookie_header) ->
+          case session_cookie.read_id(cookie_header, descriptor.cookie.name) {
+            Error(_) -> ByRequestId(fallback)
+            Ok(sid) ->
+              case session_store.load(dict, sid) {
+                Error(_) -> ByRequestId(fallback)
+                Ok(subject) -> ByUserId(subject)
+              }
+          }
+      }
+    }
   }
 }
 

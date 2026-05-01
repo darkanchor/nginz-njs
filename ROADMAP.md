@@ -93,30 +93,50 @@ Shipped:
 
 #### `session` — session state
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** `lua-resty-session`  
-**Blockers:** none for the primitive; the real `ngx.shared` adapter is still to be implemented
+**Blockers:** none
 
-Session token issuance, validation, and TTL management. Cookie logic + AES/HMAC via njs Web Crypto; the intended runtime backing is the njs built-in shared dict. The scripted layer handles token format and lifecycle policy, while the actual `ngx.shared` store adapter remains future work.
+Session token issuance, validation, and TTL management. Cookie modeling, lifecycle policy, and an `ngx.shared`-backed store adapter backed by `mlcache`. The scripted layer owns session semantics; the store is an interchangeable adapter.
+
+Shipped:
+- `session/model` — `CookieConfig` (name, http_only, secure, path, same_site), `SessionDescriptor` (cookie, backend, ttl, rotate_after), `validate`, `summary`
+- `session/cookie` — `set_header`, `clear_header`, `read_id` for cookie header construction and parsing
+- `session/store` — `load`/`save`/`delete` backed by `mlcache/shared`
+- `start` (async) — SHA-256 session ID from timestamp + remote addr, sets Set-Cookie, stores subject
+- `verify` (sync) — reads cookie, returns 204 + X-Session-Subject or 401; for `auth_request`
+- `end_session` (sync) — deletes session, clears cookie
+- `authz.session_gate` — thin `auth_request` adapter in the `authz` module consuming `session/store`
+- `feature_flags` `"session"` key type — resolves session subject → `ByUserId` for per-user bucketing
 
 #### `mlcache` — two-level LRU + shared dict cache
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** `lua-resty-mlcache`  
-**Blockers:** none for the primitive; the real `ngx.shared` adapter is still to be implemented
+**Blockers:** none
 
-njs manages LRU policy per-worker; the intended runtime backing is the njs built-in shared dict. Stampede-collapse and a real shared-dict-backed adapter remain future work. High leverage for caching fetch results, session data, and flag state.
+njs manages LRU policy per-worker via `ngx.shared`. Stampede-collapse via atomic `add` (set-if-not-exists). High leverage for caching fetch results, session data, and flag state.
+
+Shipped:
+- `mlcache/model` — `CacheConfig`, `LookupResult`, `ConfigError`, `validate`, `summary`
+- `mlcache/lookup` — `should_fetch`, `should_refresh`, `can_serve`, `get_value`
+- `mlcache/shared` — `get`/`put`/`delete`/`try_lock`/`release_lock` backed by njs `ngx.shared`
+- Stale detection via embedded `fresh_expiry_ms` prefix; dict TTL = `ttl + stale_ttl`
+- Consumed by `authz/cache`, `feature_flags/state`, and `session/store`
 
 #### `response_transform` — body shaping
 
-**Status:** scaffold  
+**Status:** complete  
 **Blockers:** none
 
-Response field masking, conditional JSON mutation, application-specific rewrites. Sits as a body filter after upstream content.
+Plan-based JSON field masking, dropping, renaming, and conditional shaping. Pure evaluation layer (`eval`) + `js_body_filter` adapter. No native dependency.
 
-Why scripted:
-- Pure string/JSON transformation; no parser engine needed
-- Complements the native `transform` module with custom policy logic
+Shipped:
+- `response_transform/plan` — `Operation` (MaskField, DropField, RenameField, SetField, WhenStatus), `Plan`, `PlanError`, `validate`, `compose`, `summary`
+- `response_transform/eval` — `apply` / `apply_at_status` on `Dict(String, String)` field maps
+- `response_transform/body` — `js_body_filter` adapter with JSON parse/encode; pass-through on non-string-value bodies
+- `clear_content_length` header filter to enable chunked transfer after body mutation
+- `transform` and `transform_with_status` body filter handlers; status read from nginx `$status`
 
 #### `webhook` — request signing and callback verification
 
@@ -172,14 +192,14 @@ Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock pro
 
 ### Sprint 2 — state (njs built-in shared dict)
 
-4. `session` — cookie + AES/HMAC + a real `ngx.shared` store adapter
-5. `mlcache` — per-worker LRU + a real `ngx.shared` adapter; unlocks high-performance scripted caching
-6. `nginz_njs_feature_flags` — wire flag state to `ngx.shared` for runtime toggling without reload
+4. ~~`session` — cookie + lifecycle + a real `ngx.shared` store adapter~~ ✓ done
+5. ~~`mlcache` — per-worker LRU + a real `ngx.shared` adapter; unlocks high-performance scripted caching~~ ✓ done
+6. ~~`nginz_njs_feature_flags` — wire flag state to `ngx.shared` for runtime toggling without reload~~ ✓ done
 
 ### Sprint 3 — policy and enrichment
 
 7. ~~`nginz_njs_authz` — complete JWT claim integration; add introspection cache path~~ ✓ done
-8. `response_transform` — body filter library
+8. ~~`response_transform` — plan-based body filter with mask/drop/rename/conditional ops~~ ✓ done
 9. `webhook` — HMAC signing and callback verification
 
 ### Deferred

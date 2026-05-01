@@ -13,6 +13,7 @@ gleam_json = ">= 3.0.0 and < 4.0.0"
 ngs = ">= 1.0.8 and < 2.0.0"
 nginz_njs_http_client = { path = "../http_client" }
 nginz_njs_mlcache = { path = "../mlcache" }
+nginz_njs_session = { path = "../session" }
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"

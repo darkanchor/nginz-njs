@@ -76,6 +76,7 @@ Two-level cache for nginx written in Gleam. Reusable cache semantics and a `ngx.
 |---|---|
 | `get(dict_name, key, stale_ttl_seconds)` | Read from named shared dict; returns Hit/Stale/Miss |
 | `put(dict_name, key, value, config)` | Write to named shared dict with TTL |
+| `delete(dict_name, key)` | Remove a key; silent no-op when unavailable |
 | `try_lock(dict_name, key, lock_ttl_ms)` | Acquire a per-key write lock; True if acquired |
 | `release_lock(dict_name, key)` | Release a previously acquired lock |
 
@@ -124,10 +125,9 @@ The architectural rule: `mlcache` exposes reusable cache semantics; consumers co
 
 ## Cross-module composition boundary
 
-- `authz` should later compose `mlcache` for remote-decision or introspection caching
-- `feature_flags` should later compose `mlcache` for runtime-backed flag state lookup
+All three downstream modules now consume mlcache directly — see the consumers table below.
+
 - `webhook` may later use `mlcache` for replay/idempotency support
-- `session` may later use `mlcache`-like lookup semantics, but should continue owning session policy
 
 ## Phased implementation plan
 
@@ -159,8 +159,9 @@ The architectural rule: `mlcache` exposes reusable cache semantics; consumers co
 
 | Module | Usage |
 |---|---|
-| `authz/cache.gleam` | Uses `mlcache/shared.get`/`put` for OPA decision caching; `mlcache/lookup.get_value` for result classification |
-| `feature_flags/state.gleam` | Uses `mlcache/shared.get`/`put` and `mlcache/lookup.get_value` for runtime-toggleable flag config |
+| `authz/cache.gleam` | `shared.get`/`put` for OPA decision caching keyed by token SHA-256; `lookup.get_value` for result classification |
+| `feature_flags/state.gleam` | `shared.get`/`put` and `lookup.get_value` for runtime-toggleable flag config stored in `ngx.shared` |
+| `session/store.gleam` | `shared.get`/`put`/`delete` for session ID → subject mapping with TTL |
 
 ## Verification checklist
 
@@ -168,3 +169,4 @@ The architectural rule: `mlcache` exposes reusable cache semantics; consumers co
 - [x] `bun test modules/mlcache/tests/basic/do.test.js` — basic integration passes
 - [x] `bun test modules/authz/tests/cache/do.test.js` — authz cache backed by mlcache passes
 - [x] `bun test modules/feature_flags/tests/state/do.test.js` — feature_flags dict-backed state passes
+- [x] `bun test modules/session/tests/store/do.test.js` — session store backed by mlcache passes

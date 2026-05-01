@@ -9,6 +9,9 @@ import gleam/javascript/promise.{type Promise}
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
+import session/cookie as session_cookie
+import session/model as session_model
+import session/store as session_store
 
 fn context_from_request(r: HTTPRequest) -> Context {
   Context(
@@ -186,6 +189,37 @@ fn enriched_remote_check(r: HTTPRequest) -> Promise(Nil) {
   apply_decision(r, decision, "authz: remote denied — ")
 }
 
+/// Verify a session cookie and forward the session subject to the upstream.
+/// Reads $session_dict from nginx variables. Designed for use with nginx
+/// auth_request — returns 204 + X-Session-Subject on success, 401 otherwise.
+fn session_gate(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let dict_name = case ngx.get(vars, "session_dict") {
+    Ok(v) -> ngx.to_string(v)
+    Error(_) -> ""
+  }
+  let descriptor = session_model.default_descriptor()
+  case http.get_header_in(r, "cookie") {
+    Error(_) -> http.return_code(r, 401)
+    Ok(cookie_header) ->
+      case session_cookie.read_id(cookie_header, descriptor.cookie.name) {
+        Error(_) -> http.return_code(r, 401)
+        Ok(sid) ->
+          case dict_name {
+            "" -> http.return_code(r, 503)
+            dict ->
+              case session_store.load(dict, sid) {
+                Error(_) -> http.return_code(r, 401)
+                Ok(subject) -> {
+                  let _ = http.set_headers_out(r, "X-Session-Subject", subject)
+                  http.return_code(r, 204)
+                }
+              }
+          }
+      }
+  }
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("check", check)
@@ -195,4 +229,5 @@ pub fn exports() -> JsObject {
   |> ngx.merge("enriched_check", enriched_check)
   |> ngx.merge("enriched_jwt_check", enriched_jwt_check)
   |> ngx.merge("enriched_remote_check", enriched_remote_check)
+  |> ngx.merge("session_gate", session_gate)
 }
