@@ -40,14 +40,14 @@ Webhook signing and callback-verification for nginx written in Gleam. Composes `
 - `VerifyError` — MissingSignature, InvalidSignature, InvalidPayload
 
 **`nginz_njs_webhook.gleam`** — njs entry point
-- `describe_outbound` / `describe_inbound` — stable config summaries (scaffold)
+- `describe_outbound` / `describe_inbound` — stable config summaries
 - `sign_demo` — signs a JSON payload and returns the hex signature
 - `verify_demo` — verifies an inbound request's signature header against the body
 - `signed_fixture` — returns a signed payload fixture for integration testing
-- `deliver_demo` — signs and delivers a webhook (requires upstream fixture)
+- `deliver_demo` — signs and delivers a webhook; test/runtime targets can be overridden via nginx vars
 
 **Integration tests**
-- `tests/basic/` — 9 scenarios: describe handlers, HMAC signing, signed fixture, verification (valid/invalid/missing), determinism
+- `tests/basic/` — 11 scenarios: describe handlers, HMAC signing, signed fixture, verification (valid/invalid/missing), determinism, and delivery success/failure
 
 ## Core abstractions
 
@@ -59,7 +59,6 @@ Webhook signing and callback-verification for nginx written in Gleam. Composes `
 
 ## Cross-module composition boundary
 
-- `webhook` consumes `http_client` for outbound delivery (`deliver`)
 - `webhook` consumes `http_client` directly for outbound delivery today
 - `metrics` hooks remain future operational glue, not part of the current completion bar
 - `mlcache` may later cache idempotency/replay metadata, but `webhook` should not absorb general cache policy

@@ -184,23 +184,25 @@ Some problems need both layers. The correct pattern: native Zig provides the per
 
 Sequencing is driven by the `nginz` native roadmap. Scripted modules unblock progressively as native primitives land.
 
-### Sprint 1 — foundation (no native dependencies)
+### Sprint 1 — foundation (no native dependencies, complete)
 
-1. `http_client` — `ngx.fetch()` wrapper; enables all composition patterns
-2. `nginz_njs_workflow` — complete the scaffold; subrequest pipeline with `http_client`
-3. `nginz_njs_feature_flags` — complete the scaffold; stable bucketing + nginx var integration
+1. ~~`http_client` — `ngx.fetch()` wrapper; enables all composition patterns~~ ✓ done
+2. ~~`nginz_njs_workflow` — complete the scaffold; subrequest pipeline with `http_client`~~ ✓ done
+3. ~~`nginz_njs_feature_flags` — complete the scaffold; stable bucketing + nginx var integration~~ ✓ done
 
-### Sprint 2 — state (njs built-in shared dict)
+### Sprint 2 — state (njs built-in shared dict, complete)
 
 4. ~~`session` — cookie + lifecycle + a real `ngx.shared` store adapter~~ ✓ done
 5. ~~`mlcache` — per-worker LRU + a real `ngx.shared` adapter; unlocks high-performance scripted caching~~ ✓ done
 6. ~~`nginz_njs_feature_flags` — wire flag state to `ngx.shared` for runtime toggling without reload~~ ✓ done
 
-### Sprint 3 — policy and enrichment
+### Sprint 3 — policy and enrichment (complete)
 
 7. ~~`nginz_njs_authz` — complete JWT claim integration; add introspection cache path~~ ✓ done
 8. ~~`response_transform` — plan-based body filter with mask/drop/rename/conditional ops~~ ✓ done
-9. `webhook` — HMAC signing and callback verification
+9. ~~`webhook` — HMAC signing and callback verification~~ ✓ done
+
+All modules originally scheduled in Sprints 1–3 are now complete. Remaining roadmap items below are deferred extensions and hybrid/native follow-ons rather than incomplete scripted sprint modules.
 
 ### Deferred
 
