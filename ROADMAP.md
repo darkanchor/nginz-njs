@@ -45,11 +45,11 @@ Why first:
 
 #### `nginz_njs_workflow` — subrequest orchestration
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** `ngx.location.capture()` patterns  
-**Blockers:** none; `http_client` improves ergonomics
+**Blockers:** none
 
-Parallel and sequential subrequest pipelines. Fan-out to multiple internal locations, combine results, drive enrichment flows.
+Parallel and sequential subrequest pipelines. `run_parallel` / `run_sequential`, `and_then` chaining, `with_timeout` / `with_retry` / `recover` wrappers, `fail_on_status` for HTTP-level error detection, `map_step` / `map_body` / `map_error` combinators, `first_ok` / `all_success` / `partition` collectors, and `merge_bodies` / `merge_with` / `require_all` / `select_first_ok` merge strategies. Backends: `subrequest_step` (nginx internal locations) and `fetch_step` (via `http_client`).
 
 Roadmap integration:
 - Pairs with `requestid` and `jwt` native modules for auth + enrichment flows
@@ -57,7 +57,7 @@ Roadmap integration:
 
 #### `nginz_njs_feature_flags` — stable bucketing
 
-**Status:** scaffold  
+**Status:** complete  
 **Lua analog:** various custom solutions backed by `lua-resty-mlcache`  
 **Blockers:** none
 

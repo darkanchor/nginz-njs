@@ -133,7 +133,7 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 |---|---|---|
 | [`nginz_njs_http_client`](modules/http_client/README.md) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
 | [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | complete |
-| [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines | scaffold |
+| [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines; parallel/sequential runners, retry/timeout/recover wrappers, merge strategies | complete |
 | [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | complete |
 | [`nginz_njs_session`](modules/session/README.md) | Cookie modeling, session lifecycle, `ngx.shared`-backed store; consumed by authz (`session_gate`) and feature_flags (session key type) | complete |
 | [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache with `ngx.shared` adapter, stale/hit/miss semantics, stampede-collapse; backing layer for authz, feature_flags, and session | complete |
