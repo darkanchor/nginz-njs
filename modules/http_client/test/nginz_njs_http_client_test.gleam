@@ -1,18 +1,20 @@
 import gleeunit
 import gleeunit/should
 import http_client/client.{
-  Delete, EmptyUrl, Get, Head, InvalidTimeout, InvalidUrl, Options, Post,
-  build_url, demo_request, method_text, new, summary, validate,
+  Delete, EmptyUrl, Get, Head, InvalidTimeout, InvalidUrl as ClientInvalidUrl,
+  Options, Post, build_url, demo_request, method_text, new, summary, validate,
   with_bearer_token, with_body, with_header, with_headers, with_method,
   with_query_param, with_query_params, with_timeout,
 }
 import http_client/fetch.{
-  Response, is_client_error, is_redirect, is_server_error, is_success,
-  status_text,
+  FetchFailed, InvalidRequest, InvalidUrl, Response, Timeout, is_client_error,
+  is_redirect, is_server_error, is_success, status_text,
 }
+import http_client/metrics as http_metrics
 import http_client/middleware
 import http_client/policy.{NoRetry, Retry, with_retry}
 import http_client/response.{body_if_status, body_if_success, body_or}
+import metrics/line
 
 pub fn main() {
   gleeunit.main()
@@ -199,13 +201,13 @@ pub fn validate_empty_url_test() {
 pub fn validate_invalid_scheme_test() {
   new("ftp://api.example.test")
   |> validate
-  |> should.equal(Error(InvalidUrl("ftp://api.example.test")))
+  |> should.equal(Error(ClientInvalidUrl("ftp://api.example.test")))
 }
 
 pub fn validate_missing_host_test() {
   new("https:///oops")
   |> validate
-  |> should.equal(Error(InvalidUrl("https:///oops")))
+  |> should.equal(Error(ClientInvalidUrl("https:///oops")))
 }
 
 pub fn validate_invalid_timeout_test() {
@@ -425,4 +427,110 @@ pub fn middleware_pipeline_idiom_test() {
     |> summary
 
   via_builder |> should.equal(via_middleware)
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_success_counter_test() {
+  let m =
+    http_metrics.request_success(
+      Response(status: 200, body: "ok"),
+      "/api/users",
+      42,
+    )
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_request_total:1|c|#route:/api/users,status:200,result:success",
+  )
+}
+
+pub fn metrics_failure_timeout_test() {
+  let m = http_metrics.request_failure(Timeout(1000), "/api/users")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api/users,result:timeout",
+  )
+}
+
+pub fn metrics_failure_fetch_failed_test() {
+  let m =
+    http_metrics.request_failure(
+      FetchFailed("connection refused"),
+      "/api/items",
+    )
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api/items,result:fetch_failed",
+  )
+}
+
+pub fn metrics_failure_invalid_url_test() {
+  let m = http_metrics.request_failure(InvalidUrl("bad://url"), "/api")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api,result:invalid_url",
+  )
+}
+
+pub fn metrics_failure_invalid_request_test() {
+  let m = http_metrics.request_failure(InvalidRequest("empty body"), "/api")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api,result:invalid_request",
+  )
+}
+
+pub fn metrics_request_outcome_success_test() {
+  let m =
+    http_metrics.request_outcome(
+      Ok(Response(status: 201, body: "created")),
+      "/api/users",
+      42,
+    )
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_request_total:1|c|#route:/api/users,status:201,result:success",
+  )
+}
+
+pub fn metrics_request_outcome_error_test() {
+  let m = http_metrics.request_outcome(Error(Timeout(1500)), "/api/users", 0)
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api/users,result:timeout",
+  )
+}
+
+pub fn metrics_latency_test() {
+  let m = http_metrics.request_latency("/api/search", 42)
+  line.render_statsd(m)
+  |> should.equal("nginz.http_client_latency_ms:42|ms|#route:/api/search")
+}
+
+pub fn metrics_summary_success_test() {
+  let #(outcome, timing) =
+    http_metrics.request_summary(
+      Ok(Response(status: 200, body: "ok")),
+      "/api/users",
+      42,
+    )
+  line.render_statsd(outcome)
+  |> should.equal(
+    "nginz.http_client_request_total:1|c|#route:/api/users,status:200,result:success",
+  )
+  line.render_statsd(timing)
+  |> should.equal("nginz.http_client_latency_ms:42|ms|#route:/api/users")
+}
+
+pub fn metrics_summary_error_test() {
+  let #(outcome, timing) =
+    http_metrics.request_summary(Error(Timeout(500)), "/api/ops", 500)
+  line.render_statsd(outcome)
+  |> should.equal(
+    "nginz.http_client_error_total:1|c|#error:true,route:/api/ops,result:timeout",
+  )
+  line.render_statsd(timing)
+  |> should.equal(
+    "nginz.http_client_latency_ms:500|ms|#route:/api/ops,result:error",
+  )
 }

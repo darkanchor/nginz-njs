@@ -1,3 +1,4 @@
+import authz/metrics
 import authz/policy.{
   type Context, Allow, Context, Deny, all_of, any_of, async_evaluate,
   claim_contains, claim_contains_one_of, claim_one_of, deny_401, deny_403,
@@ -8,6 +9,7 @@ import gleam/dict
 import gleam/javascript/promise
 import gleeunit
 import gleeunit/should
+import metrics/line
 
 pub fn main() {
   gleeunit.main()
@@ -441,4 +443,67 @@ pub fn async_evaluate_empty_test() {
   ctx("GET", "/api")
   |> async_evaluate([])
   |> promise.map(fn(d) { d |> should.equal(Allow) })
+}
+
+// --- Metrics adapter ---
+
+pub fn metrics_allow_counter_test() {
+  let m = metrics.allow_counter("api_gateway")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.authz_decision_total:1|c|#result:allow,route:api_gateway",
+  )
+}
+
+pub fn metrics_deny_counter_test() {
+  let m = metrics.deny_counter("admin_panel", 403, "missing claim: role")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.authz_decision_total:1|c|#result:deny,route:admin_panel,status:403,reason:missing claim: role",
+  )
+}
+
+pub fn metrics_deny_counter_truncates_long_reason_test() {
+  let long =
+    "this is a very long reason string that exceeds the 64 character limit for tag values in statsd"
+  let m = metrics.deny_counter("admin_panel", 401, long)
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.authz_decision_total:1|c|#result:deny,route:admin_panel,status:401,reason:this is a very long reason string that exceeds the 64 character ",
+  )
+}
+
+pub fn metrics_decision_allow_test() {
+  let m = metrics.decision(Allow, "api_gateway")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.authz_decision_total:1|c|#result:allow,route:api_gateway",
+  )
+}
+
+pub fn metrics_decision_deny_test() {
+  let m = metrics.decision(Deny(403, "path not allowed"), "api_gateway")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.authz_decision_total:1|c|#result:deny,route:api_gateway,status:403,reason:path not allowed",
+  )
+}
+
+pub fn metrics_opa_call_outcome_allow_test() {
+  let #(outcome, timing) = metrics.opa_call_outcome(Allow, "opa", 15)
+  line.render_statsd(outcome)
+  |> should.equal("nginz.authz_opa_call_total:1|c|#result:allow,route:opa")
+  line.render_statsd(timing)
+  |> should.equal("nginz.authz_opa_latency_ms:15|ms|#route:opa")
+}
+
+pub fn metrics_opa_call_outcome_deny_test() {
+  let #(outcome, timing) =
+    metrics.opa_call_outcome(Deny(403, "policy decision"), "opa", 25)
+  line.render_statsd(outcome)
+  |> should.equal(
+    "nginz.authz_opa_call_total:1|c|#result:deny,route:opa,status:403,reason:policy decision",
+  )
+  line.render_statsd(timing)
+  |> should.equal("nginz.authz_opa_latency_ms:25|ms|#route:opa")
 }
