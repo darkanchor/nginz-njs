@@ -267,7 +267,9 @@ The platform value comes from having good reusable modules first, not from build
 
 ## Milestone 2 — hybrid native+scripted sprints
 
-Milestone 1 (Sprints 1–3) built the scripted foundation with no native dependencies. Milestone 2 shifts to **maximizing the hybrid native+scripted value** — every module reads from native module variables or subrequest endpoints and provides scripted policy, orchestration, and composition on top.
+Milestone 1 (Sprints 1–3) built the scripted foundation with no native dependencies. Milestone 2 shifts to **maximizing the hybrid native+scripted value** — native modules provide the hot-path primitive or endpoint surface, while scripted modules provide reusable Gleam-side policy, mapping, and response-shaping layers on top.
+
+The design rule stays the same as the rest of the repo: the reusable library surface is the product; the nginx `exports()` adapter is just the deployment boundary. For this milestone, that means documenting and building typed policy/mapping/fallback libraries first, then composing them into handlers as native surfaces stabilize.
 
 ### Native module surface available to njs
 
@@ -312,16 +314,22 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 
 **Why scripted:**
 - Custom error responses (JSON, HTML) and retry-after header injection are policy logic, not counter logic
-- Per-key rate limit metrics via `metrics` module are log-phase string work
 - Composition with `authz` — rate limit by JWT claim (e.g. `$jwt_claim_sub` as ratelimit key)
-- Workflow integration: degraded-mode fallback when rate-limited
+- Future composition with `metrics` and `workflow` belongs in scripted land rather than in the native counter module
 
-**Planned surface:**
-- `ratelimit_policy/model` — `RateLimitContext` (result, key, source, cost), `PolicyDecision`, `PolicyConfig`
+**Current reusable surface:**
+- `ratelimit_policy/model` — `RateLimitResult`, `RateLimitContext`, `PolicyDecision`, `RateLimitHeaders`
 - `ratelimit_policy/headers` — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` injection
 - `ratelimit_policy/response` — custom JSON/HTML error body rendering for 429 responses
-- `ratelimit_policy/metrics` — emit rate limit decisions to `metrics` module (allowed/denied counts by key)
-- `ratelimit_policy/workflow` — `recover` wrapper that serves degraded response when rate-limited
+
+**Current adapter scope:**
+- read native `$ratelimit_*` variables in the nginx handler
+- inject static placeholder rate-limit headers
+- render custom 429 bodies and a static degraded fallback response
+
+**Future composition:**
+- `ratelimit_policy/metrics` — decision counters via `metrics`
+- `ratelimit_policy/workflow` — degraded-mode fallback composed through `workflow`
 
 **Composes with:** `authz`, `metrics`, `session`, `workflow`, `http_client`
 
@@ -331,17 +339,23 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 
 **Why scripted:**
 - Canary-aware header injection and response tagging are policy logic
-- Feature flag integration: canary users get different flag evaluations
-- Session-aware canary: sticky canary assignment via `session` cookie
-- Metrics: track canary vs production request rates
+- Feature-flag, session-sticky, and metrics composition should stay in scripted land rather than in the native routing primitive
 
-**Planned surface:**
-- `canary_policy/model` — `CanaryContext` (is_canary, headers), `PolicyDecision`
-- `canary_policy/headers` — inject `X-Canary: true`, custom routing headers
-- `canary_policy/feature_flags` — canary-aware flag evaluation: canary requests → different bucket
-- `canary_policy/session` — sticky canary assignment: once canary, always canary (via session store)
-- `canary_policy/metrics` — emit canary vs production request counts
-- `canary_policy/transform` — apply `response_transform` plans differently for canary responses
+**Current reusable surface:**
+- `canary_policy/model` — `CanaryDecision`, `CanaryContext`, `PolicyAction`, header helpers
+- `canary_policy/feature_flags` — canary-aware flag override helpers
+- `canary_policy/session` — sticky-assignment serialization and resolution helpers
+- `canary_policy/metrics` — decision counters
+
+**Current adapter scope:**
+- read `$ngz_canary` in the nginx handler
+- inject `X-Canary` request/response visibility headers
+- log canary vs stable decision
+
+**Future composition:**
+- compose `feature_flags` for canary-aware rollouts
+- compose `session` for sticky assignment
+- compose `metrics` and `response_transform` for observability and canary-specific shaping
 
 **Composes with:** `feature_flags`, `session`, `metrics`, `response_transform`
 
@@ -351,16 +365,22 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 
 **Why scripted:**
 - Custom fallback responses per circuit state are policy logic
-- Workflow `recover` patterns that respect circuit state
-- Metrics emission on state transitions
-- Composition with `http_client` retry — suppress retries when circuit is open
+- Workflow, metrics, cache, and retry composition should live in scripted libraries rather than in the native state machine
 
-**Planned surface:**
+**Current reusable surface:**
 - `circuit_breaker_policy/model` — `CircuitState` (Closed | Open | HalfOpen), `CircuitContext`, `FallbackConfig`
-- `circuit_breaker_policy/fallback` — serve cached/degraded response when circuit is open
-- `circuit_breaker_policy/workflow` — `recover` wrapper: if circuit open, skip upstream and serve fallback
-- `circuit_breaker_policy/http_client` — retry policy modifier: no retries when circuit is open
-- `circuit_breaker_policy/metrics` — emit circuit state and fallback counts
+- `circuit_breaker_policy/fallback` — JSON/HTML/text fallback body rendering
+- `circuit_breaker_policy/workflow` — wrappers for circuit-aware workflow composition
+- `circuit_breaker_policy/metrics` — state/fallback counters
+
+**Current adapter scope:**
+- read `$ngz_circuit_state` in the nginx handler
+- return 204/503 or state-aware static fallback bodies
+
+**Future composition:**
+- `workflow` wrappers for step-level recovery
+- `mlcache`-backed cached fallback
+- `http_client` retry suppression when the circuit is open
 
 **Composes with:** `workflow`, `http_client`, `metrics`, `mlcache`
 
@@ -372,34 +392,51 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 
 **Why scripted:**
 - Request ID propagation to upstreams via `http_client` and `workflow` subrequests
-- Structured trace data emission (request ID, latency, status, upstream) in log phase
-- Session correlation: links request ID to session subject for debugging
+- Structured trace rendering and future session correlation are orchestration concerns, not native request-ID generation
 
-**Planned surface:**
+**Current reusable surface:**
 - `request_tracing/model` — `TraceContext` (request_id, start_time, spans), `Span` (name, duration, status)
 - `request_tracing/propagate` — inject `X-Request-ID` / `X-Trace-ID` into upstream requests and subrequests
-- `request_tracing/record` — accumulate spans through workflow steps
-- `request_tracing/emit` — log-phase structured trace output (JSON or logfmt)
-- `request_tracing/metrics` — per-request-ID latency and status via `metrics` module
+- `request_tracing/record` — span-accumulation helpers for future workflow composition
+- `request_tracing/emit` — structured trace rendering (JSON or logfmt)
+- `request_tracing/metrics` — trace metrics helpers
+
+**Current adapter scope:**
+- read `$ngz_request_id` in the nginx handler
+- inject propagation headers
+- emit structured trace lines in content-phase logging
+
+**Future composition:**
+- workflow span recording
+- `http_client` middleware propagation
+- `metrics` emission and eventual `js_log`-phase integration
 
 **Composes with:** `workflow`, `http_client`, `metrics`, `session`
 
 #### 14. `health_gateway` — scripted health aggregation and readiness policy
 
-**Reads from:** native healthcheck module's `/health_status` JSON endpoint (via subrequest)
+**Reads from:** backend health inputs today; later, native healthcheck module `/health_status` JSON via subrequest
 
 **Why scripted:**
-- Aggregate health across multiple backends via `http_client`
-- Readiness gate: `workflow` steps that check backend health before dispatching
-- Custom health response shaping (combine native health + session status + feature flag state)
-- Health-aware routing: skip unhealthy backends in workflow `first_ok`
+- Aggregation and readiness policy are reusable pure logic
+- Future health fetching, caching, and routing composition should happen through existing scripted modules (`http_client`, `workflow`, `mlcache`)
 
-**Planned surface:**
-- `health_gateway/model` — `BackendHealth` (name, status, success_rate, probe_healthy), `AggregateHealth`
-- `health_gateway/aggregate` — fetch health from multiple backends, compute overall status
-- `health_gateway/gate` — `workflow` step wrapper: skip step if backend unhealthy
-- `health_gateway/response` — combine native health + scripted signals into custom health response
-- `health_gateway/cache` — cache backend health via `mlcache` to avoid probing on every request
+**Current reusable surface:**
+- `health_gateway/model` — `BackendHealth`, `AggregateStatus`, `GateDecision`
+- `health_gateway/response` — aggregate and readiness JSON renderers
+- `health_gateway/gate` — helpers for health-aware dispatch decisions
+- `health_gateway/aggregate` — interface for future `http_client`-based fetching
+- `health_gateway/cache` — interface for future `mlcache`-backed lookup
+
+**Current adapter scope:**
+- read `$health_backends` from nginx variables in the handler
+- parse it into backend health records
+- apply aggregate and readiness logic to build JSON responses
+
+**Future composition:**
+- fetch native healthcheck JSON through `http_client`
+- add `mlcache`-backed stale/hit/miss caching
+- compose `workflow` for health-aware routing and `session`/`feature_flags` for richer custom health surfaces
 
 **Composes with:** `workflow`, `http_client`, `mlcache`, `session`, `feature_flags`
 
@@ -407,39 +444,59 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 
 #### 15. `security_gateway` — unified security policy composition
 
-**Reads from:** `$jwt_claims`, `$oidc_claim_*`, `$nftset_result`, `$ratelimit_result` (multiple native modules)
+**Reads from:** `$jwt_claim_*`, `$oidc_claim_*`, `$ratelimit_result` today; `$nftset_result` / WAF-facing signals later
 
 **Why scripted:**
-- Composing multiple security signals (IP reputation + JWT claims + rate limit) into a unified allow/deny/challenge decision is pure policy branching
+- Composing multiple security signals into a unified allow/deny/challenge decision is pure policy branching
 - CAPTCHA/challenge page injection for borderline requests
-- WAF response shaping: custom error pages for WAF detections
-- Security decision metrics breakdown
+- Future metrics, WAF shaping, and IP-reputation composition belong in scripted policy rather than native primitives
 
-**Planned surface:**
-- `security_gateway/model` — `SecuritySignal` (JwtClaims | IpReputation | RateLimit | WafDetection), `SecurityDecision` (Allow | Deny | Challenge)
+**Current reusable surface:**
+- `security_gateway/model` — `SecuritySignal`, `SecurityDecision`
 - `security_gateway/evaluate` — compose signals into a single decision using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
-- `security_gateway/challenge` — render CAPTCHA or challenge page for borderline requests
+- `security_gateway/challenge` — challenge page renderers
 - `security_gateway/response` — custom error pages per denial reason (401, 403, 429)
-- `security_gateway/metrics` — security decision breakdown (auth failures, rate limits, IP blocks, WAF hits)
+- `security_gateway/metrics` — decision counters and breakdown helpers
+
+**Current adapter scope:**
+- read JWT, OIDC, and ratelimit variables in the nginx handler
+- apply a default hardcoded policy (`deny_if_rate_limited`, then `require_any_auth`)
+- return allow/deny/challenge responses
+
+**Future composition:**
+- metrics emission through `metrics`
+- IP reputation via nftset when the native surface is packageable
+- WAF-facing signal integration when an njs surface exists
+- response shaping through `response_transform`
 
 **Composes with:** `authz`, `session`, `feature_flags`, `http_client`, `metrics`, `response_transform`
 
-#### 16. `oidc_bridge` — OIDC-to-session and OIDC-to-policy bridge
+#### 16. `oidc_bridge` — OIDC identity mapping and downstream bridge
 
 **Reads from:** `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` (native oidc module)
 
 **Why scripted:**
-- Binding OIDC identity to session state is orchestration logic
 - Mapping OIDC claims to `authz` policy context is claim-to-role policy
-- Token refresh orchestration via `http_client`
 - Feature flag integration: OIDC user → `ByUserId` bucketing
+- Future session persistence and token refresh orchestration belong in scripted composition layers, not in the native OIDC flow primitive
 
-**Planned surface:**
+**Current reusable surface:**
 - `oidc_bridge/model` — `OidcIdentity` (sub, email, name, raw_claims), `SessionBinding`
-- `oidc_bridge/session` — create/update session on OIDC callback; bind OIDC claims to session subject
+- `oidc_bridge/session` — inline binding creation and subject extraction
 - `oidc_bridge/claims` — map OIDC claims to `authz` claims dict (same shape as `authz/claims.from_vars`)
-- `oidc_bridge/refresh` — token refresh orchestration via `http_client` when access token expires
+- `oidc_bridge/refresh` — interface for future token-refresh orchestration
 - `oidc_bridge/feature_flags` — resolve OIDC subject → `ByUserId` for per-user flag bucketing
+
+**Current adapter scope:**
+- read `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` in the handler
+- map claims for authz consumption
+- derive per-user feature-flag keys
+- generate inline session-binding metadata without persisting it
+
+**Future composition:**
+- persist bindings via `session/store`
+- refresh access tokens through `http_client`
+- support additional mapped claims when native OIDC variables expand
 
 **Composes with:** `authz`, `session`, `feature_flags`, `http_client`
 
@@ -462,3 +519,114 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 | 6 | Security composition | jwt, oidc, nftset, ratelimit, waf | authz, session, feature_flags, http_client, metrics |
 
 Each sprint produces modules that **read native variables and compose scripted policy on top** — the hybrid model where native Zig provides performance primitives and njs provides the policy shell. Every module in this batch would be impossible without the native layer, and equally impossible without the scripted composition layer.
+
+### Recommended implementation sequence inside Milestone 2
+
+The sprint groupings above are thematic. The actual implementation order should be **dependency-first** so we grow canonical building blocks and avoid returning later just to rewire early modules.
+
+Principle: build the smallest reusable library surfaces first, then layer broader composition on top of them.
+
+#### 1. `ratelimit_policy`
+
+Start here because it is the cleanest single-signal hybrid module:
+
+- one native surface (`$ratelimit_*`)
+- one narrow scripted concern (typed decision context → headers / error bodies)
+- immediate value without waiting on deeper cross-module wiring
+
+This sets the baseline Milestone 2 pattern: **native variable → typed Gleam context → policy decision → adapter response**.
+
+#### 2. `canary_policy`
+
+Second, build another narrow single-signal module with a different output shape:
+
+- one native surface (`$ngz_canary`)
+- simple scripted output (`X-Canary` headers, tagging, logging)
+- future composition hooks into `feature_flags`, `session`, and `metrics`
+
+Doing this early validates the same hybrid pattern without yet forcing us to wire session persistence or feature-flag orchestration into first-pass handlers.
+
+#### 3. `circuit_breaker_policy`
+
+Third, add the state-aware fallback layer:
+
+- one native surface (`$ngz_circuit_state`)
+- richer fallback policy than the first two modules
+- natural future composition with `workflow`, `mlcache`, and `http_client`
+
+By doing it after `ratelimit_policy`, we reuse the response-shaping mindset before introducing broader recovery composition.
+
+#### 4. `request_tracing`
+
+Fourth, establish the cross-cutting propagation primitive before higher-order composition modules depend on it:
+
+- one native surface (`$ngz_request_id`)
+- reusable trace context and propagation headers
+- future composition point for `workflow`, `http_client`, and `metrics`
+
+This should land before larger orchestration-heavy modules so later milestone work can adopt one tracing model rather than retrofit it afterward.
+
+#### 5. `oidc_bridge`
+
+Fifth, build the identity-mapping bridge before the unified security layer:
+
+- one native surface (`$oidc_claim_*`)
+- reusable `OidcIdentity` mapping into authz claims and feature-flag keys
+- future persistence and refresh through `session/store` and `http_client`
+
+This lets `security_gateway` consume a stable OIDC-side building block instead of forcing OIDC mapping logic directly into the top-level security module.
+
+#### 6. `security_gateway`
+
+Sixth, build the multi-signal composition layer only after the narrower bridges exist:
+
+- consumes JWT, OIDC, and ratelimit signals together
+- benefits from the earlier pattern work in `ratelimit_policy` and `oidc_bridge`
+- is the first true Milestone 2 “policy shell over multiple primitives” module
+
+This is where we intentionally start composing prior building blocks instead of inventing fresh adapter-local logic.
+
+#### 7. `health_gateway`
+
+Implement last.
+
+This is the least canonical early module because its best version wants several pieces at once:
+
+- health data fetching through `http_client`
+- routing/gating through `workflow`
+- caching through `mlcache`
+- possibly richer custom health shaping with `session` / `feature_flags`
+
+Placing it last avoids building a fake first pass and then circling back to rewire subrequest fetching, cache semantics, and routing integration.
+
+### Why this order minimizes rewiring
+
+This sequence intentionally moves from:
+
+1. **single native variable → local policy**
+2. **single native variable → reusable bridge**
+3. **multiple native signals → composed policy**
+4. **fetch/cache/routing-heavy capstone composition**
+
+That gives us a canonical growth path:
+
+- first prove the typed hybrid adapter pattern
+- then prove reusable bridge modules
+- then compose multiple signals
+- only then build the orchestration-heavy health gateway
+
+If we start with `health_gateway` or `security_gateway`, we will almost certainly come back later to re-thread tracing, identity mapping, caching, or workflow semantics. This order tries to avoid that first-milestone-style return trip.
+
+### Practical rollout order
+
+If we want one concrete checklist for implementation work, use this exact order:
+
+1. `ratelimit_policy`
+2. `canary_policy`
+3. `circuit_breaker_policy`
+4. `request_tracing`
+5. `oidc_bridge`
+6. `security_gateway`
+7. `health_gateway`
+
+The sprint labels remain useful for roadmap communication, but engineering execution should prefer this dependency-first order.

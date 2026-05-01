@@ -1,6 +1,6 @@
 # nginz_njs_request_tracing
 
-Distributed tracing glue for the native `requestid` module. Reads `$ngz_request_id`, propagates headers to upstreams, records spans, and emits structured trace logs in Gleam.
+Distributed tracing glue for the native `requestid` module. The pure tracing layer reads `$ngz_request_id`, propagates headers to upstreams, and emits structured trace logs in Gleam.
 
 ## Roadmap position
 
@@ -8,23 +8,34 @@ Sprint 5 (observability + tracing) in Milestone 2 of `ROADMAP.md`. Depends on th
 
 ## Design goals
 
-- read `$ngz_request_id` from the native requestid module
-- propagate `X-Request-ID` and `X-Trace-ID` to upstream via `http_client` and `workflow` subrequests
-- record spans through workflow steps for end-to-end latency tracking
-- emit structured trace output (JSON or logfmt) in the log phase
-- correlate request ID with session subject for debugging
-- keep tracing pure and testable — the native module owns ID generation, this module owns propagation and emission
+- Read `$ngz_request_id` from the native requestid module
+- Propagate `X-Request-ID` and `X-Trace-ID` to upstream via `http_client` and `workflow` subrequests
+- Emit structured trace output (JSON or logfmt) in the content phase
+- Keep tracing pure and testable — the native module owns ID generation, this module owns propagation and emission
 
-## Native dependency
+## Core abstractions
 
-Requires the nginz native `requestid` module (`make NGINZ_MODULES="requestid"`). The native module:
+- `TraceContext` — request_id, start_time, spans: the accumulating trace state for a request
+- `Span` — name, duration_ms, status, success: a single timed operation within the trace
+- `propagation_headers` — `X-Request-ID` / `X-Trace-ID` header pairs for upstream propagation
 
-- Runs in ACCESS phase and sets `$ngz_request_id` to a UUIDv4 per request
-- Handles the hot-path ID generation
+The tracing model is side-effect free: it builds trace context from the native module variable, accumulates spans, and renders structured output. HTTP propagation and log emission belong at the nginx adapter boundary.
 
-This module runs in a later phase and reads `$ngz_request_id` to apply scripted tracing policy.
+## Scripted core vs optional native integration
 
-For integration tests without the native module, the variable can be simulated with `set $ngz_request_id "test-request-123"` directives (see `tests/basic/nginx.conf`).
+### Scripted core
+
+- Header propagation: `X-Request-ID` and `X-Trace-ID` for upstream requests
+- Trace emission: JSON and logfmt structured output
+- Span recording: accumulator for workflow step latencies (library available)
+- Reusable library surface: `model`, `propagate`, `emit`, `record`, `metrics` modules
+
+### Optional native integration
+
+- Native `requestid` module: provides `$ngz_request_id` (UUIDv4) per request
+- Native module runs in ACCESS phase; this module runs in CONTENT phase
+
+The native module owns the hot-path ID generation. This module owns trace propagation, span recording, and structured emission.
 
 ## Exports
 
@@ -58,9 +69,9 @@ http {
 |---|---|
 | `request_tracing/model` | `TraceContext`, `Span`, context builders, duration, summary |
 | `request_tracing/propagate` | `propagation_headers` — builds X-Request-ID / X-Trace-ID header pairs |
-| `request_tracing/record` | `record_span` — accumulates spans onto a TraceContext through workflow steps |
+| `request_tracing/record` | `record_span` — span accumulator for workflow integration |
 | `request_tracing/emit` | `json`, `logfmt` — structured trace line renderers |
-| `request_tracing/metrics` | `latency_metric`, `traced_counter` — emits trace metrics to the `metrics` module |
+| `request_tracing/metrics` | `latency_metric`, `traced_counter` — trace metrics |
 
 ## What is implemented
 
@@ -77,13 +88,12 @@ http {
 **`request_tracing/emit.gleam`**
 - `json(ctx, now)` — JSON trace line with trace_id, duration_ms, span_count, spans
 - `logfmt(ctx, now)` — logfmt trace line with span success/failure breakdown
-- Internal helpers: `span_json`, `span_count_summary`
 
 **`request_tracing/metrics.gleam`**
 - `latency_metric(ctx, duration_ms, route)` — histogram-style latency metric
 - `traced_counter(ctx, route)` — traced request counter
 
-**`request_tracing/record.gleam`** (stub)
+**`request_tracing/record.gleam`**
 - `record_span(ctx, name, duration_ms, status)` — pipe-friendly span accumulator
 - `record_result(ctx, name, status)` — records a span from a workflow step result
 
@@ -91,16 +101,16 @@ http {
 - 3 handlers: `traced`, `traced_with_log`, `traced_with_session`
 - Reads `$ngz_request_id` (falls back to `$request_id`, then `"unknown"`)
 - Uses `ngx.now()` via the `ngs` package for start time
+- Emits trace lines via `http.log()` in the content phase
 
 **Integration tests**
 - `tests/basic/` — 3 scenarios: header propagation, structured log emission, session correlation
-- Simulates `$ngz_request_id` via `set` directive
 
 ## Cross-module composition
 
-### workflow — span recording
+### workflow — span recording (library available)
 
-Wrap workflow steps with span recording for end-to-end visibility:
+The `request_tracing/record` module provides `record_result` for wrapping workflow steps. Current entry point handlers do not record spans; workflow integration is a future enhancement:
 
 ```gleam
 import request_tracing/record
@@ -108,9 +118,9 @@ import request_tracing/record
 let traced_step = record.record_result(ctx, "upstream_auth", step_result)
 ```
 
-### http_client — header injection
+### http_client — header injection (library available)
 
-Inject trace headers into upstream fetch calls:
+The `request_tracing/propagate` module provides `propagation_headers` for injecting trace headers into upstream fetch calls:
 
 ```gleam
 import request_tracing/propagate
@@ -121,9 +131,9 @@ let req = client.new_get("https://api.example.test")
   |> client.with_headers(headers)
 ```
 
-### metrics — trace emission
+### metrics — trace emission (library available)
 
-Emit trace metrics alongside other instrumentation:
+The `request_tracing/metrics` module provides latency and counter metrics. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
 
 ```gleam
 import request_tracing/metrics as rt_metrics
@@ -131,8 +141,19 @@ import metrics/line
 
 let m = rt_metrics.traced_counter(ctx, "/api")
 line.render_statsd(m)
-// → "nginz.request_trace_total:1|c|#route:/api"
 ```
+
+## Completion scope
+
+`request_tracing` is complete for its core contract as a header propagation and emission layer:
+
+- Pure trace model: `$ngz_request_id` → `TraceContext` → structured output
+- Header propagation: `X-Request-ID` and `X-Trace-ID` for upstream requests
+- Trace emission: JSON and logfmt renderers
+- nginx handlers: traced, traced_with_log, traced_with_session variants
+- Integration test coverage for all handler variants
+
+Future work focuses on composition through existing modules (`workflow`, `http_client`, `metrics`) rather than new handler logic.
 
 ## Phased implementation plan
 
@@ -143,15 +164,16 @@ line.render_statsd(m)
 - [x] `request_tracing/emit` — JSON and logfmt trace line renderers
 - [x] Basic handlers: traced, traced_with_log, traced_with_session
 
-### Phase 2 — span recording and metrics ✓
+### Phase 2 — span recording and metrics libraries ✓
 
 - [x] `request_tracing/metrics` — latency and counter emission
-- [x] `request_tracing/record` — span accumulation stub
+- [x] `request_tracing/record` — span accumulation interface
 - [x] Integration test scenarios
 
-### Phase 3 — full workflow integration (future)
+### Phase 3 — composition through existing modules (future)
 
-- [ ] Span recording throughout workflow pipeline steps with automatic latency
+- [ ] Entry point handlers compose `request_tracing/record` for span recording
+- [ ] Entry point handlers compose `request_tracing/metrics` for trace emission
 - [ ] Trace context propagation through `http_client` middleware
 - [ ] OpenTelemetry-compatible trace format emission
 - [ ] Log-phase emission via `js_log` handler pattern
@@ -162,7 +184,6 @@ line.render_statsd(m)
 - [x] unit-test total_duration and summary
 - [x] unit-test propagation_headers output
 - [x] unit-test emit.json and emit.logfmt rendering
-- [x] unit-test metrics counter formatting
 - [x] `tests/basic/` — 3 integration scenarios with simulated `$ngz_request_id`
 
 ## Verification checklist
@@ -173,7 +194,7 @@ line.render_statsd(m)
 
 ## Limitations
 
-- **Span recording is a stub.** The `record.gleam` module provides the interface but full workflow/pipeline integration is deferred to Phase 3.
-- **No OpenTelemetry format.** Trace emission currently uses custom JSON/logfmt. OTLP-compatible format is a Phase 3 item.
+- **Span recording not wired to handlers.** The `record.gleam` module provides the interface but entry point handlers do not record spans. Full workflow/pipeline integration is a future enhancement.
+- **No OpenTelemetry format.** Trace emission currently uses custom JSON/logfmt. OTLP-compatible format is a future item.
 - **Log-phase emission is simulated.** The current handler emits trace lines via `http.log()` in the content phase. True log-phase emission requires a `js_log` handler pattern.
 - **Session correlation requires auth_request.** The `traced_with_session` handler expects `$session_subject` to be set by a prior `auth_request` call.

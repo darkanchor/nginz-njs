@@ -1,6 +1,6 @@
 # nginz_njs_oidc_bridge
 
-OIDC-to-session and OIDC-to-policy bridge for the native `oidc` module. Reads `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` and binds identity to session state, maps claims to authz policies, and integrates with feature flags in Gleam.
+OIDC-to-policy bridge for the native `oidc` module. The pure mapping layer reads `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` and maps claims to authz policies and feature flag keys in Gleam.
 
 ## Roadmap position
 
@@ -8,30 +8,42 @@ Sprint 6 (security composition) in Milestone 2 of `ROADMAP.md`. Depends on the n
 
 ## Design goals
 
-- read `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` from the native oidc module
-- bind OIDC identity to session state on OIDC callback
-- map OIDC claims to `authz`-compatible claims dict for policy evaluation
-- resolve OIDC subject to `ByUserId` key for per-user feature flag bucketing
-- orchestrate token refresh via `http_client` (stub)
-- keep the bridge layer pure and testable — the native module owns OIDC flows, this module owns identity binding and mapping
+- Read `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` from the native oidc module
+- Map OIDC claims to `authz`-compatible claims dict for policy evaluation
+- Resolve OIDC subject to `ByUserId` key for per-user feature flag bucketing
+- Keep the bridge layer pure and testable — the native module owns OIDC flows, this module owns identity mapping
 
-## Native dependency
+## Core abstractions
 
-Requires the nginz native `oidc` module (`make NGINZ_MODULES="oidc"`). The native module:
+- `OidcIdentity` — sub, email, name, raw_claims: the typed identity extracted from native module variables
+- `SessionBinding` — session_id, identity, created_at: the binding between session and OIDC identity
+- `to_authz_claims` — `OidcIdentity` → `List(#(String, String))`: claim mapping for authz policy evaluation
+- `to_flag_key` — `OidcIdentity` → `"ByUserId:<sub>"`: key resolution for per-user feature flag bucketing
 
-- Handles OIDC authorization code flow and token exchange
-- Sets `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` variables
-- Manages token storage and session state
+The mapper is side-effect free: it transforms native module variables into typed identity, identity into claims/flag keys, and bindings into session metadata. OIDC flow handling and session persistence belong at the nginx adapter boundary or in dedicated modules (`session/store`).
 
-This module runs in a later phase and reads those variables to apply scripted identity binding.
+## Scripted core vs optional native integration
 
-For integration tests without the native module, variables can be simulated with `set` directives (see `tests/basic/nginx.conf`).
+### Scripted core
+
+- Identity mapping: OIDC claims → `OidcIdentity` → authz claims / feature flag keys
+- Session binding: inline session ID generation with identity binding
+- Token refresh interface: orchestration hook for http_client-based refresh
+- Reusable library surface: `model`, `session`, `claims`, `feature_flags`, `refresh` modules
+
+### Optional native integration
+
+- Native `oidc` module: handles OIDC authorization code flow, token exchange, sets `$oidc_claim_*` variables
+
+Native module runs in ACCESS phase; this module runs in CONTENT phase.
+
+The native module owns OIDC flow handling and token storage. This module owns identity mapping and cross-module integration (authz claims, feature flag keys).
 
 ## Exports
 
 | Handler | nginx directive | Description |
 |---|---|---|
-| `main.bind_session` | `js_content` | Binds OIDC identity to session, returns session binding as JSON |
+| `main.bind_session` | `js_content` | Generates session ID inline, returns session binding as JSON |
 | `main.map_claims` | `js_content` | Maps OIDC claims to authz-compatible claims dict |
 | `main.resolve_flag_key` | `js_content` | Resolves OIDC subject to feature flag key |
 
@@ -68,9 +80,9 @@ Response for bind_session:
 | Module | Purpose |
 |---|---|
 | `oidc_bridge/model` | `OidcIdentity`, `SessionBinding`, `identity`, `bind`, `identity_summary` |
-| `oidc_bridge/session` | `create_binding`, `session_subject`, `binding_summary` — session lifecycle |
+| `oidc_bridge/session` | `create_binding`, `session_subject`, `binding_summary` — session ID generation |
 | `oidc_bridge/claims` | `to_authz_claims`, `has_claim`, `get_claim` — claim mapping |
-| `oidc_bridge/refresh` | `refresh` — token refresh orchestration (stub) |
+| `oidc_bridge/refresh` | `refresh` — token refresh orchestration interface |
 | `oidc_bridge/feature_flags` | `to_flag_key`, `to_flag_key_pair` — feature flag integration |
 
 ## What is implemented
@@ -83,7 +95,7 @@ Response for bind_session:
 - `identity_summary(id)` — logging string
 
 **`oidc_bridge/session.gleam`**
-- `create_binding(identity, now)` — generates session ID and binds
+- `create_binding(identity, now)` — generates session ID inline and binds
 - `session_subject(identity)` — extracts sub for authz policy
 - `binding_summary(binding)` — logging string
 
@@ -92,8 +104,8 @@ Response for bind_session:
 - `has_claim(identity, claim)` — claim presence check
 - `get_claim(identity, claim)` — typed claim retrieval with `Option`
 
-**`oidc_bridge/refresh.gleam`** (stub)
-- `refresh(identity, refresh_token)` — returns identity unchanged; full http_client-based refresh deferred
+**`oidc_bridge/refresh.gleam`**
+- `refresh(identity, refresh_token)` — token refresh interface (returns identity unchanged; http_client integration deferred)
 
 **`oidc_bridge/feature_flags.gleam`**
 - `to_flag_key(identity)` — resolves sub to `"ByUserId:<sub>"` for per-user bucketing
@@ -103,23 +115,12 @@ Response for bind_session:
 - 3 handlers: `bind_session`, `map_claims`, `resolve_flag_key`
 - Reads `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` variables
 - Uses `ngx.now()` via the `ngs` package for session timestamp
+- Session IDs are generated inline, not persisted via `session/store`
 
 **Integration tests**
 - `tests/basic/` — 5 scenarios: full identity, minimal identity, claim mapping, flag key, missing claims
 
 ## Cross-module composition
-
-### session — identity binding
-
-Create a session binding from OIDC identity on callback:
-
-```gleam
-import oidc_bridge/session
-import oidc_bridge/model
-
-let identity = model.identity(sub, email, name, [])
-let binding = session.create_binding(identity, ngx.now())
-```
 
 ### authz — claim mapping
 
@@ -146,9 +147,23 @@ let flag_key = feature_flags.to_flag_key(identity)
 // Pass to feature_flags/evaluation for per-user bucketing
 ```
 
-### http_client — token refresh
+### session — identity binding (future)
 
-When access tokens expire, refresh via the OIDC provider's token endpoint:
+The `oidc_bridge/session` module generates session IDs inline. Future work could persist bindings via `session/store`:
+
+```gleam
+import oidc_bridge/session
+import oidc_bridge/model
+import session/store
+
+let identity = model.identity(sub, email, name, [])
+let binding = session.create_binding(identity, ngx.now())
+// Future: store.save(dict_name, binding.session_id, binding.identity.sub, ttl)
+```
+
+### http_client — token refresh (interface available)
+
+The `oidc_bridge/refresh` module provides the interface for http_client-based token refresh against the OIDC provider. Implementation is deferred to a future phase:
 
 ```gleam
 import oidc_bridge/refresh
@@ -158,6 +173,17 @@ import http_client/client
 // to call the token endpoint and return an updated identity
 ```
 
+## Completion scope
+
+`oidc_bridge` is complete for its core contract as an OIDC identity mapping layer:
+
+- Pure identity model: native claims → `OidcIdentity` → authz claims / feature flag keys
+- Session binding: inline session ID generation with identity binding
+- nginx handlers: bind_session, map_claims, resolve_flag_key variants
+- Integration test coverage for all handler variants
+
+The `refresh` module provides an interface for future `http_client` integration. Current entry point handlers do not persist session bindings via `session/store`.
+
 ## Phased implementation plan
 
 ### Phase 1 — identity model and claim mapping ✓
@@ -166,19 +192,19 @@ import http_client/client
 - [x] `oidc_bridge/claims` — to_authz_claims, has_claim, get_claim
 - [x] Basic handlers: bind_session, map_claims
 
-### Phase 2 — feature flags and session ✓
+### Phase 2 — feature flags and session ID generation ✓
 
 - [x] `oidc_bridge/session` — create_binding, session_subject
 - [x] `oidc_bridge/feature_flags` — to_flag_key, to_flag_key_pair
 - [x] `resolve_flag_key` handler
 - [x] Integration test scenarios
 
-### Phase 3 — token refresh and advanced integration (future)
+### Phase 3 — token refresh and session persistence (future)
 
-- [x] `oidc_bridge/refresh` — stub for token refresh orchestration
+- [x] `oidc_bridge/refresh` — token refresh interface
 - [ ] Full http_client-based token refresh against OIDC provider
+- [ ] Session store integration (persist bindings via `session/store`)
 - [ ] Automatic refresh on 401 responses from upstream
-- [ ] Session store integration (mlcache-backed session persistence)
 - [ ] Custom claim variable registration for additional OIDC claims
 
 ## TDD plan
@@ -198,7 +224,7 @@ import http_client/client
 
 ## Limitations
 
-- **Token refresh is a stub.** The `refresh.gleam` module returns the identity unchanged. Full http_client-based token refresh against the OIDC provider is deferred to Phase 3.
-- **Session store is simulated.** Session IDs are generated inline rather than persisted via `session/store`. Full mlcache-backed session persistence requires session module integration.
+- **Token refresh not implemented.** The `refresh.gleam` module provides the interface but http_client-based refresh is deferred.
+- **Session binding not persisted.** Session IDs are generated inline. Full mlcache-backed session persistence via `session/store` is deferred.
 - **Only three core claims.** The entry point reads `sub`, `email`, and `name`. Additional claims require custom variable registration in the native oidc module.
 - **No session lifecycle.** Session expiration, rotation, and logout are not implemented. The bridge focuses on initial binding only.

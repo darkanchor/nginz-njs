@@ -140,13 +140,13 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
-| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping, header injection, metrics, and workflow fallback for the native ratelimit module | scaffold |
-| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary routing policy: header injection, feature flag integration, session-sticky assignment, and metrics for the native canary module | scaffold |
-| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback, workflow recovery, and observability for the native circuit-breaker module | scaffold |
-| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: request ID propagation, span recording, and structured trace emission for the native requestid module | scaffold |
-| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Scripted health aggregation, readiness gating, and custom health responses for the native healthcheck module | scaffold |
-| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Unified security policy composition: JWT claims + OIDC identity + rate limit → allow/deny/challenge decisions | scaffold |
-| [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | OIDC-to-session and OIDC-to-policy bridge: identity binding, claim mapping, token refresh, and feature flag integration | scaffold |
+| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping: native ratelimit variables → typed decision context → headers and custom 429 bodies | partial |
+| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary header/tagging layer: native canary decision → typed canary context → `X-Canary` visibility and future composition hooks | partial |
+| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback layer: native circuit state → typed fallback policy → state-aware degraded responses | partial |
+| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | partial |
+| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Scripted health aggregation and readiness gating over backend health inputs, with future interfaces for native healthcheck fetching and cache-backed composition | partial |
+| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Unified security policy composition: JWT, OIDC, and rate-limit signals → typed rules → allow/deny/challenge decisions | partial |
+| [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | OIDC identity mapping layer: native OIDC claims → authz claims, feature-flag keys, and inline session-binding metadata | partial |
 
 ## Setup
 

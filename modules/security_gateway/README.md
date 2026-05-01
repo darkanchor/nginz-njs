@@ -1,6 +1,6 @@
 # nginz_njs_security_gateway
 
-Unified security policy composition for the native `jwt`, `oidc`, and `ratelimit` modules. Reads multiple native module variables and composes them into a single allow/deny/challenge decision in Gleam.
+Unified security policy composition. The pure policy layer reads `$jwt_claim_*`, `$oidc_claim_*`, and `$ratelimit_result` nginx variables and composes them into a single allow/deny/challenge decision in Gleam.
 
 ## Roadmap position
 
@@ -8,31 +8,45 @@ Sprint 6 (security composition) in Milestone 2 of `ROADMAP.md`. Depends on the n
 
 ## Design goals
 
-- read `$jwt_claim_*`, `$oidc_claim_*`, and `$ratelimit_result` from multiple native modules
-- compose security signals into a single `SecurityDecision` using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
-- render custom error responses per denial reason (401, 403, 429)
-- render challenge pages for borderline requests (login redirect, CAPTCHA placeholder)
-- emit security decision metrics via the `metrics` module
-- keep policy pure and testable — native modules own signal generation, this module owns composition
+- Read `$jwt_claim_*`, `$oidc_claim_*`, and `$ratelimit_result` from nginx variables set by native modules
+- Compose security signals into a single `SecurityDecision` using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
+- Render custom error responses per denial reason (401, 403, 429)
+- Render challenge pages for borderline requests (login redirect, CAPTCHA placeholder)
+- Keep policy pure and testable — native modules own signal generation, this module owns composition
 
-## Native dependency
+## Core abstractions
 
-Requires the nginz native `jwt`, `oidc`, and `ratelimit` modules (`make NGINZ_MODULES="jwt oidc ratelimit"`). The native modules:
+- `SecuritySignal` — `JwtAuthenticated`, `JwtAnonymous`, `OidcIdentity`, `OidcAnonymous`, `RateLimit`, `IpReputation`, `WafDetection`: typed signals from native modules
+- `SecurityDecision` — `Allow`, `Deny(status, reason)`, `Challenge(status, reason, type)`: the unified policy outcome
+- `Rule` — `fn(List(SecuritySignal)) -> SecurityDecision`: composable policy functions
 
-- `jwt`: verifies JWT signatures and sets `$jwt_claim_<name>` variables
-- `oidc`: handles OIDC flows and sets `$oidc_claim_*` variables
-- `ratelimit`: manages shared-memory counters and sets `$ratelimit_*` variables
+The evaluator is side-effect free: it transforms native module variables into typed signals, signals into decisions via rule composition, and decisions into HTTP responses. Signal generation and HTTP response belong at the nginx adapter boundary.
 
-This module runs in a later phase and reads those variables to apply scripted policy.
+## Scripted core vs optional native integration
 
-For integration tests without the native modules, variables can be simulated with `set` directives (see `tests/basic/nginx.conf`).
+### Scripted core
+
+- Signal composition: combining JWT, OIDC, rate limit signals into unified policy
+- Rule evaluation: `all_of`, `any_of`, `not_` combinators for arbitrary policy trees
+- Response rendering: JSON error bodies, challenge pages per denial reason
+- Reusable library surface: `model`, `evaluate`, `challenge`, `response`, `metrics` modules
+
+### Optional native integration
+
+- Native `jwt` module: verifies JWT signatures, sets `$jwt_claim_*` variables
+- Native `oidc` module: handles OIDC flows, sets `$oidc_claim_*` variables
+- Native `ratelimit` module: manages shared-memory counters, sets `$ratelimit_*` variables
+
+Native modules run in ACCESS phase; this module runs in CONTENT phase.
+
+Native modules own signal generation (cryptographic verification, counter logic). This module owns policy composition and response shaping.
 
 ## Exports
 
 | Handler | nginx directive | Description |
 |---|---|---|
 | `main.evaluate_security` | `js_content` | Reads all signals, evaluates policy, returns allow/deny/challenge |
-| `main.evaluate_with_metrics` | `js_content` | Same as evaluate_security plus metrics emission |
+| `main.evaluate_with_metrics` | `js_content` | Same as evaluate_security |
 | `main.challenge_handler` | `js_content` | Issues challenge (307 redirect) for anonymous, 204 for authenticated |
 
 ## nginx configuration
@@ -95,9 +109,10 @@ http {
 - 3 handlers: `evaluate_security`, `evaluate_with_metrics`, `challenge_handler`
 - Reads `$jwt_claim_*`, `$oidc_claim_*`, `$ratelimit_*` variables
 - Composes default policy: deny if rate-limited, then require any auth (JWT or OIDC)
+- Default policy is hardcoded — not configurable via nginx variables
 
 **Integration tests**
-- `tests/basic/` — 8 scenarios: JWT allow, OIDC allow, anonymous deny, rate limit deny, rate limit ok, challenge redirect, challenge allow, metrics
+- `tests/basic/` — 8 scenarios: JWT allow, OIDC allow, anonymous deny, rate limit deny, rate limit ok, challenge redirect, challenge allow
 
 ## Cross-module composition
 
@@ -111,9 +126,9 @@ import security_gateway/model
 let signal = model.jwt_authenticated([#("sub", "user-1"), #("role", "admin")])
 ```
 
-### metrics — decision emission
+### metrics — decision emission (library available)
 
-Emit security decisions to the metrics module:
+The `security_gateway/metrics` module provides counters for security decisions. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
 
 ```gleam
 import security_gateway/metrics as sg_metrics
@@ -121,10 +136,9 @@ import metrics/line
 
 let m = sg_metrics.decision_counter(Allow, "/api")
 line.render_statsd(m)
-// → "nginz.security_gateway_decision_total:1|c|#outcome:allow,route:/api"
 ```
 
-### response_transform — error body shaping
+### response_transform — error body shaping (future)
 
 Apply response_transform plans differently per denial reason:
 
@@ -135,6 +149,18 @@ import response_transform/eval
 let body = sg_response.json_403("ip blocked")
 ```
 
+## Completion scope
+
+`security_gateway` is complete for its core contract as a security policy composition layer:
+
+- Pure policy model: native signals → `SecuritySignal` list → `SecurityDecision` via rule evaluation
+- Rule combinators: `all_of`, `any_of`, `not_` for arbitrary policy trees
+- Response rendering: JSON error bodies (401, 403, 429), challenge pages (login redirect)
+- nginx handlers: evaluate_security, evaluate_with_metrics, challenge_handler variants
+- Integration test coverage for all handler variants
+
+Future work focuses on composition through existing modules (`metrics`, `response_transform`) and native module integration (IP reputation, WAF) rather than new handler logic.
+
 ## Phased implementation plan
 
 ### Phase 1 — signal model and evaluation ✓
@@ -143,17 +169,17 @@ let body = sg_response.json_403("ip blocked")
 - [x] `security_gateway/evaluate` — Rule composition with all_of/any_of/not_
 - [x] Basic handler: evaluate_security
 
-### Phase 2 — responses and metrics ✓
+### Phase 2 — responses and challenge rendering ✓
 
 - [x] `security_gateway/response` — JSON error renderers per status code
 - [x] `security_gateway/challenge` — challenge page renderers
-- [x] `security_gateway/metrics` — decision, denial, and challenge counters
 - [x] Integration test scenarios
 
-### Phase 3 — advanced composition (future)
+### Phase 3 — composition and native integration (future)
 
-- [ ] IP reputation integration (nftset not yet packageable as a standalone module)
-- [ ] WAF detection integration (WAF is access-phase, no njs surface yet)
+- [ ] Entry point handlers compose `security_gateway/metrics` for decision emission
+- [ ] IP reputation integration (requires nftset in nginz native modules)
+- [ ] WAF detection integration (requires WAF njs-facing variables)
 - [ ] Dynamic policy reload from config
 - [ ] Per-route differentiated security policies
 - [ ] CAPTCHA service integration for challenge responses
@@ -165,7 +191,6 @@ let body = sg_response.json_403("ip blocked")
 - [x] unit-test evaluate: allow, deny jwt, deny rate limit, any auth, all_of, any_of, not_, challenge
 - [x] unit-test challenge page rendering
 - [x] unit-test response body rendering (401, 403, 429)
-- [x] unit-test metrics counter formatting
 - [x] `tests/basic/` — 8 integration scenarios with simulated variables
 
 ## Verification checklist
@@ -178,5 +203,5 @@ let body = sg_response.json_403("ip blocked")
 
 - **IP reputation is a stub.** The `IpReputation` signal type exists but nftset is not packageable as a standalone `--add-module` module. Full integration requires nftset added to `build_package.zig`'s `module_infos` in the nginz repo.
 - **WAF detection is a stub.** The `WafDetection` signal type exists but WAF runs in ACCESS phase with no njs-facing variables.
-- **Default policy is hardcoded.** The entry point uses a single composed policy. Per-route customization requires variable-driven policy selection (future).
-- **Challenge responses are static.** CAPTCHA integration requires an external service for challenge verification (future).
+- **Default policy is hardcoded.** The entry point uses a single composed policy. Per-route customization requires variable-driven policy selection.
+- **Challenge responses are static.** CAPTCHA integration requires an external service for challenge verification.

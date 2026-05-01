@@ -1,38 +1,49 @@
 # nginz_njs_health_gateway
 
-Scripted health aggregation, readiness gating, and custom health responses for the native `healthcheck` module. Reads health data via subrequests to `/health_status` endpoints and applies policy in Gleam.
+Scripted health aggregation and readiness gating. The pure policy layer parses `$health_backends` nginx variable and applies aggregation/gating logic in Gleam.
 
 ## Roadmap position
 
-Sprint 5 (observability + tracing) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `healthcheck` module. Composes with `workflow`, `http_client`, `mlcache`, `session`, and `feature_flags`.
+Sprint 5 (observability + tracing) in Milestone 2 of `ROADMAP.md`. Intended to compose with `workflow`, `http_client`, `mlcache`, `session`, and `feature_flags`.
 
 ## Design goals
 
-- aggregate health across multiple backends via `http_client` subrequests
-- provide readiness gating: block requests when all backends are unhealthy
-- combine native healthcheck data with scripted signals (session, feature flags) into custom health responses
-- cache backend health via `mlcache` to avoid probing on every request
-- keep health policy pure and testable — the native module owns probing, this module owns aggregation and gating
+- Parse `$health_backends` nginx variable to determine backend health status
+- Provide readiness gating: block requests when all backends are unhealthy
+- Render JSON health responses
+- Keep health policy pure and testable
 
-## Native dependency
+## Core abstractions
 
-Requires the nginz native `healthcheck` module (`make NGINZ_MODULES="healthcheck"`). The native module:
+- `BackendHealth` — name, healthy, success_rate, consecutive_failures: the health status of a single backend
+- `AggregateStatus` — `AllHealthy` | `Degraded(n, total)` | `AllUnhealthy`: the aggregated health across backends
+- `GateDecision` — `Allow` | `Block(reason)`: the readiness decision for dispatch
 
-- Exposes `/health_status`, `/health_liveness`, and `/health_readiness` JSON endpoints via subrequest
-- Probes backend health on configured intervals
-- Provides detailed health JSON for each probed backend
+The aggregator is side-effect free: it transforms backend health data into an aggregate status, and status into gate decisions. Health data fetching and HTTP response belong at the nginx adapter boundary.
 
-This module reads health data via subrequests to those endpoints and applies scripted aggregation, gating, and response shaping.
+## Scripted core vs optional native integration
 
-For integration tests without the native module, health data can be simulated with `set $health_backends "api=healthy,db=healthy"` directives (see `tests/basic/nginx.conf`).
+### Scripted core
+
+- Health aggregation: combining multiple backend statuses into `AggregateStatus`
+- Readiness gating: mapping aggregate status to `GateDecision`
+- Response rendering: JSON output for aggregate and readiness endpoints
+- Reusable library surface: `model`, `response`, `gate`, `metrics`, `aggregate`, `cache` modules
+
+### Optional native integration
+
+- Native `healthcheck` module: provides `/health_status`, `/health_liveness`, `/health_readiness` JSON endpoints
+- Native module probes backends on configured intervals
+
+**Current implementation does not fetch from native module endpoints.** The entry point reads `$health_backends` as a simulated nginx variable. Future work should compose `http_client` for subrequest-based health fetching.
 
 ## Exports
 
 | Handler | nginx directive | Description |
 |---|---|---|
-| `main.aggregate_health` | `js_content` | Returns JSON combining health status of all configured backends |
+| `main.aggregate_health` | `js_content` | Returns JSON combining health status of all configured backends (parsed from `$health_backends`) |
 | `main.readiness_gate` | `js_content` | Blocks (503) when all backends unhealthy, passes through otherwise |
-| `main.custom_health` | `js_content` | Combines native healthcheck data with scripted signals |
+| `main.custom_health` | `js_content` | Returns health JSON |
 
 ## nginx configuration
 
@@ -73,11 +84,11 @@ Response on readiness block:
 | Module | Purpose |
 |---|---|
 | `health_gateway/model` | `BackendHealth`, `AggregateStatus`, `GateDecision`, `aggregate`, `gate_decision` |
-| `health_gateway/aggregate` | `fetch_aggregate` — fetches health from multiple backends via http_client subrequests |
-| `health_gateway/gate` | `can_dispatch`, `with_gate` — workflow step wrapper that skips unhealthy backends |
+| `health_gateway/aggregate` | `fetch_aggregate` — http_client-based aggregation interface |
+| `health_gateway/gate` | `can_dispatch`, `with_gate` — workflow step wrapper helpers |
 | `health_gateway/response` | `aggregate_json`, `readiness_json` — JSON response renderers |
-| `health_gateway/metrics` | `aggregate_counter`, `gate_counter` — emits health metrics to the `metrics` module |
-| `health_gateway/cache` | `cached_health` — caches health via mlcache (stale/hit/miss) |
+| `health_gateway/metrics` | `aggregate_counter`, `gate_counter` — health metrics |
+| `health_gateway/cache` | `cached_health` — mlcache-based lookup interface |
 
 ## What is implemented
 
@@ -98,29 +109,29 @@ Response on readiness block:
 - `aggregate_counter(status, route)` — health aggregate counter tagged by status
 - `gate_counter(allowed, route)` — gate decision counter
 
-**`health_gateway/aggregate.gleam`** (stub)
-- `fetch_aggregate(backends)` — full subrequest-based aggregation deferred to Phase 2
-
 **`health_gateway/gate.gleam`**
 - `can_dispatch(status)` — boolean check for upstream dispatch
 - `with_gate(status, value, fallback)` — guarded value selection
 
-**`health_gateway/cache.gleam`** (stub)
-- `cached_health(key)` — mlcache-backed lookup, currently returns Miss
+**`health_gateway/aggregate.gleam`**
+- `fetch_aggregate(backends)` — interface for http_client-based aggregation (implementation deferred)
+
+**`health_gateway/cache.gleam`**
+- `cached_health(key)` — interface for mlcache-based lookup (implementation deferred)
 
 **`nginz_njs_health_gateway.gleam`** (njs entry point)
 - 3 handlers: `aggregate_health`, `readiness_gate`, `custom_health`
-- Reads `$health_backends` variable (simulated in tests, real data from healthcheck subrequests in production)
+- Reads `$health_backends` variable as a comma-separated string (e.g., `"api=healthy,db=unhealthy"`)
+- Parses the string and applies aggregation/gating logic
 
 **Integration tests**
 - `tests/basic/` — 8 scenarios: all healthy, all unhealthy, degraded, empty, gate healthy, gate unhealthy, custom healthy, custom unhealthy
-- Simulates `$health_backends` via `set` directive
 
 ## Cross-module composition
 
-### workflow — health-aware routing
+### workflow — health-aware routing (library available)
 
-Skip unhealthy backends in workflow pipelines:
+The `health_gateway/gate` module provides `can_dispatch` and `with_gate` for wrapping workflow steps:
 
 ```gleam
 import health_gateway/gate
@@ -132,18 +143,18 @@ case gate.can_dispatch(status) {
 }
 ```
 
-### mlcache — health caching
+### mlcache — health caching (interface available)
 
-Cache health to avoid probing on every request:
+The `health_gateway/cache` module provides the interface for mlcache-backed health lookup. Implementation is deferred to a future phase:
 
 ```gleam
 import health_gateway/cache
 import mlcache/shared
 ```
 
-### metrics — health observability
+### metrics — health observability (library available)
 
-Emit health check metrics alongside other instrumentation:
+The `health_gateway/metrics` module provides counters for health aggregate and gate decisions. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
 
 ```gleam
 import health_gateway/metrics as hg_metrics
@@ -151,8 +162,22 @@ import metrics/line
 
 let m = hg_metrics.aggregate_counter(status, "/health")
 line.render_statsd(m)
-// → "nginz.health_gateway_aggregate_total:1|c|#status:healthy,route:/health"
 ```
+
+### http_client — subrequest aggregation (future)
+
+The `health_gateway/aggregate` module provides the interface for http_client-based health fetching from native module endpoints. Implementation is deferred to a future phase.
+
+## Completion scope
+
+`health_gateway` is complete for its core contract as a health aggregation and gating layer:
+
+- Pure aggregation model: backend health list → `AggregateStatus` → `GateDecision`
+- Response rendering: JSON output for aggregate and readiness endpoints
+- nginx handlers: aggregate_health, readiness_gate, custom_health variants
+- Integration test coverage for all handler variants
+
+The `aggregate` and `cache` modules provide interfaces for future `http_client` and `mlcache` integration. Current entry point handlers read health data from nginx variables rather than fetching from native module endpoints.
 
 ## Phased implementation plan
 
@@ -168,12 +193,12 @@ line.render_statsd(m)
 - [x] `health_gateway/gate` — can_dispatch, with_gate wrappers
 - [x] Integration test scenarios
 
-### Phase 3 — subrequest aggregation and caching (future)
+### Phase 3 — subrequest aggregation and caching (interfaces available, implementation deferred)
 
-- [x] `health_gateway/aggregate` — stub for http_client-based aggregation
-- [x] `health_gateway/cache` — stub for mlcache-based health caching
-- [ ] Real subrequest-based health fetching with timeout and retry
-- [ ] mlcache integration with stale/hit/miss semantics
+- [x] `health_gateway/aggregate` — interface for http_client-based aggregation
+- [x] `health_gateway/cache` — interface for mlcache-based lookup
+- [ ] Implement `fetch_aggregate` with http_client subrequests
+- [ ] Implement `cached_health` with mlcache/shared stale/hit/miss semantics
 - [ ] Health-aware routing in workflow `first_ok` collectors
 
 ## TDD plan
@@ -183,7 +208,6 @@ line.render_statsd(m)
 - [x] unit-test gate_decision: healthy → allow, degraded → allow, unhealthy → block
 - [x] unit-test backend_summary formatting
 - [x] unit-test aggregate_json and readiness_json rendering
-- [x] unit-test metrics counter formatting
 - [x] `tests/basic/` — 8 integration scenarios with simulated `$health_backends`
 
 ## Verification checklist
@@ -194,7 +218,6 @@ line.render_statsd(m)
 
 ## Limitations
 
-- **Subrequest aggregation is a stub.** The `aggregate.gleam` module returns empty. Full `http_client`-based health fetching from `/health_status` endpoints is deferred to Phase 3.
-- **Cache is a stub.** The `cache.gleam` module always returns `Miss`. Full `mlcache/shared` integration with stale/hit/miss semantics is deferred to Phase 3.
-- **Health data comes from nginx variables.** In production, health data should come from subrequests to the native healthcheck module's JSON endpoints. The current entry point reads `$health_backends` as a simulated variable.
-- **No scripted signal integration.** The `custom_health` handler currently delegates to `aggregate_health`. Combining session status and feature flag state into the health response is deferred.
+- **Health data from nginx variables.** The entry point reads `$health_backends` as a simulated variable string. Production deployment with the native module should fetch health data from `/health_status` endpoints via `http_client`.
+- **Aggregation implementation deferred.** The `aggregate.gleam` module provides the interface but subrequest-based fetching is not implemented.
+- **Cache implementation deferred.** The `cache.gleam` module provides the interface but mlcache integration is not implemented.

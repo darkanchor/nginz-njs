@@ -1,31 +1,39 @@
 # nginz_njs_canary_policy
 
-Scripted canary routing policy for the native `canary` module. Reads `$ngz_canary` and applies header injection, session-sticky assignment, feature flag overrides, and metrics emission in Gleam.
+Scripted canary routing policy for the native `canary` module. The pure policy layer reads `$ngz_canary` and applies header injection and logging in Gleam.
 
 ## Roadmap position
 
-Sprint 4 in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `canary` module which provides the percentage/header-based routing decision and `$ngz_canary`. This module provides the scripted policy layer on top.
+Sprint 4 in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `canary` module which provides percentage/header-based routing decision and `$ngz_canary`. This module provides the scripted policy layer on top.
 
 ## Design goals
 
 - Read `$ngz_canary` ("1" or "0") from the native canary module
 - Inject `X-Canary` request and response headers for downstream visibility
-- Provide session-sticky canary: once assigned to canary, stay on canary
-- Integrate with `feature_flags`: canary users get different flag evaluations
-- Emit canary vs stable routing metrics via the `metrics` module
-- Keep the policy layer pure and testable — the native module owns routing, this module owns the response and observability
+- Keep the policy layer pure and testable — the native module owns routing, this module owns header injection and logging
 
-## Native dependency
+## Core abstractions
 
-Requires the nginz native `canary` module (`make NGINZ_MODULES="canary"`). The native module:
+- `CanaryDecision` — `Canary` | `Stable` | `Unknown`: the typed routing outcome from the native module
+- `CanaryContext` — decision + extra_headers: the full context for policy logic
+- `PolicyAction` — `Route` | `Override`: the action to apply based on canary status
 
-- Runs in ACCESS phase and sets `$ngz_canary` to "1" (canary) or "0" (stable)
-- Routes to different upstreams based on percentage and/or header match
-- Handles the hot-path routing decision
+The evaluator is side-effect free: it transforms the native module variable into a typed decision, and decisions into header injection. Configuration lookup and HTTP response belong at the nginx adapter boundary.
 
-This module runs in a later phase and reads `$ngz_canary` to apply scripted policy.
+## Scripted core vs optional native integration
 
-For integration tests without the native module, the variable can be simulated with `set $ngz_canary "1"` directives (see `tests/basic/nginx.conf`).
+### Scripted core
+
+- Header injection: `X-Canary` request and response headers
+- Decision logging: observability for canary vs stable routing
+- Reusable library surface: `model`, `feature_flags`, `session`, `metrics` modules
+
+### Optional native integration
+
+- Native `canary` module: provides `$ngz_canary` variable via percentage/header-based routing
+- Native module runs in ACCESS phase; this module runs in CONTENT phase
+
+The native module owns the hot-path routing decision. This module owns the response headers and observability layer.
 
 ## Exports
 
@@ -33,7 +41,7 @@ For integration tests without the native module, the variable can be simulated w
 |---|---|---|
 | `main.canary_routed` | `js_content` | Injects `X-Canary` header, logs routing decision, returns 204 |
 | `main.canary_tagged` | `js_content` | Adds `X-Canary` response header for downstream consumers |
-| `main.canary_with_metrics` | `js_content` | Canary routing with metrics emission |
+| `main.canary_with_metrics` | `js_content` | Logs routing decision |
 
 ## nginx configuration
 
@@ -72,27 +80,13 @@ Response includes:
 X-Canary: true
 ```
 
-### Canary-aware feature flags
-
-Combine with the `feature_flags` module for canary-specific flag evaluations:
-
-```nginx
-location /api/ {
-    canary_percentage "10";
-    set $ff_key_type session;
-    js_content main.canary_routed;
-}
-```
-
-When `$ngz_canary` is "1", feature flags can enable experimental features for canary users.
-
 ## Library modules
 
 | Module | Purpose |
 |---|---|
 | `canary_policy/model` | `CanaryDecision`, `CanaryContext`, `PolicyAction`, context builders, header helpers |
 | `canary_policy/feature_flags` | `FlagOverride`, `check_override` — canary-aware flag evaluation |
-| `canary_policy/session` | `resolve_sticky`, `serialize/deserialize_decision` — session-sticky canary assignment |
+| `canary_policy/session` | `resolve_sticky`, `serialize/deserialize_decision` — session-sticky helpers |
 | `canary_policy/metrics` | `decision_counter`, `canary_counter` — canary routing metrics |
 
 ## What is implemented
@@ -119,15 +113,16 @@ When `$ngz_canary` is "1", feature flags can enable experimental features for ca
 
 **`nginz_njs_canary_policy.gleam`** (njs entry point)
 - 3 handler exports: canary_routed, canary_tagged, canary_with_metrics
+- Handlers read `$ngz_canary`, set `X-Canary` header, and log the decision
 
 **Integration tests**
 - `tests/basic/` — 6 scenarios: canary, stable, unknown, tagged, metrics
 
 ## Cross-module composition
 
-### feature_flags — canary-aware evaluation
+### feature_flags — canary-aware evaluation (library available)
 
-When `$ngz_canary` is "1", feature flags can return different values for canary users:
+The `canary_policy/feature_flags` module provides `check_override` for canary-aware flag evaluation. Current entry point handlers do not use this; flag integration is a future enhancement:
 
 ```gleam
 import canary_policy/feature_flags
@@ -139,20 +134,19 @@ let overrides = [
 feature_flags.check_override(ctx, overrides)
 ```
 
-### session — sticky canary
+### session — sticky canary assignment (library available)
 
-Persist canary assignment in the session so users stay on canary across requests:
+The `canary_policy/session` module provides `resolve_sticky` for session-backed canary assignment. Current entry point handlers do not persist assignments; session integration is a future enhancement:
 
 ```gleam
 import canary_policy/session as canary_session
 
 let assignment = canary_session.resolve_sticky(ctx, stored_from_session)
-// If session has "canary", use canary even if native module says stable
 ```
 
-### metrics — routing observability
+### metrics — routing observability (library available)
 
-Emit canary routing decisions to the metrics module:
+The `canary_policy/metrics` module provides counters for canary/stable decisions. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
 
 ```gleam
 import canary_policy/metrics as canary_metrics
@@ -160,38 +154,46 @@ import metrics/line
 
 let m = canary_metrics.decision_counter(ctx, "/api")
 line.render_statsd(m)
-// → "nginz.canary_decision_total:1|c|#decision:canary,route:/api"
 ```
 
-### response_transform — canary-specific response shaping
+### response_transform — canary-specific shaping (future)
 
 Apply different `response_transform` plans for canary vs stable responses. For example, add a canary indicator to the response body for canary users.
+
+## Completion scope
+
+`canary_policy` is complete for its core contract as a header injection layer:
+
+- Pure policy model: `$ngz_canary` → `CanaryDecision` → headers
+- Header injection: `X-Canary` request and response headers
+- Decision logging: observability for routing outcomes
+- nginx handlers: routed, tagged, with_metrics variants
+- Integration test coverage for all handler variants
+
+Future work focuses on composition through existing modules (`feature_flags`, `session`, `metrics`) rather than new handler logic.
 
 ## Phased implementation plan
 
 ### Phase 1 — read native variable and inject headers ✓
 
 - [x] `canary_policy/model` — parse `$ngz_canary` into typed `CanaryDecision`
-- [x] `canary_policy/context` — build `CanaryContext` from nginx variable
 - [x] Basic handler: inject `X-Canary` header, log decision
 
-### Phase 2 — response tagging and metrics ✓
+### Phase 2 — response tagging ✓
 
-- [x] `canary_policy/metrics` — decision and canary counters
 - [x] `canary_tagged` handler — response header injection
-- [x] `canary_with_metrics` handler — routing with metrics
 
-### Phase 3 — feature flag and session integration ✓
+### Phase 3 — composition through existing modules (future)
 
-- [x] `canary_policy/feature_flags` — canary-aware flag overrides
-- [x] `canary_policy/session` — sticky canary assignment via session store
+- [ ] Entry point handlers compose `canary_policy/feature_flags` for flag overrides
+- [ ] Entry point handlers compose `canary_policy/session` for sticky assignment
+- [ ] Entry point handlers compose `canary_policy/metrics` for decision emission
 
 ### Phase 4 — advanced composition (future)
 
 - [ ] Dynamic canary percentage override in scripted policy
-- [ ] Canary-specific response body transformation
+- [ ] Canary-specific response body transformation via `response_transform`
 - [ ] A/B test assignment integration (canary → bucket mapping)
-- [ ] Canary routing metrics dashboard recipe
 
 ## TDD plan
 
@@ -200,7 +202,6 @@ Apply different `response_transform` plans for canary vs stable responses. For e
 - [x] unit-test `check_override` matching logic
 - [x] unit-test `resolve_sticky` with stored/no-session cases
 - [x] unit-test `serialize/deserialize_decision` round-trip
-- [x] unit-test metrics counter formatting
 - [x] `tests/basic/` — 6 integration scenarios with simulated variables
 
 ## Verification checklist
@@ -211,6 +212,5 @@ Apply different `response_transform` plans for canary vs stable responses. For e
 
 ## Limitations
 
+- **Handlers are thin.** Current handlers read `$ngz_canary`, set `X-Canary` header, and log. Library modules provide additional capabilities not yet composed into handlers.
 - **No dynamic percentage control.** The canary percentage is set in nginx config by the native module. Scripted policy cannot change it at runtime.
-- **Feature flag overrides are declarative.** Overrides are checked against a static list, not fetched from a dynamic source. Dynamic overrides would require `feature_flags` state integration.
-- **Session-sticky is best-effort.** If the session store is unavailable, the native module's routing decision is used as-is.
