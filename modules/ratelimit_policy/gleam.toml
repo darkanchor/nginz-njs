@@ -1,0 +1,25 @@
+name = "nginz_njs_ratelimit_policy"
+version = "0.1.0"
+target = "javascript"
+description = "Scripted rate-limit response shaping, header injection, metrics, and policy composition for the native ratelimit module"
+
+licences = ["Apache-2.0"]
+gleam = ">= 1.14.0"
+
+[dependencies]
+gleam_stdlib = ">= 0.39.0 and < 2.0.0"
+gleam_javascript = ">= 0.11.0 and < 2.0.0"
+gleam_json = ">= 3.0.0 and < 4.0.0"
+ngs = ">= 1.0.8 and < 2.0.0"
+nginz_njs_http_client = { path = "../http_client" }
+nginz_njs_metrics = { path = "../metrics" }
+nginz_njs_workflow = { path = "../workflow" }
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+
+[javascript]
+runtime = "bun"
+
+[metadata.native]
+nginz = ["ratelimit"]

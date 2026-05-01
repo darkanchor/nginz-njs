@@ -29,7 +29,13 @@
       "Bash(/home/kaiwu/Documents/gitea/nginz-njs/submodules/nginx/objs/nginx *)",
       "Bash(curl -v http://localhost:8888/transform)",
       "Bash(kill %1)",
-      "Bash(curl -v --max-time 5 http://localhost:8888/transform)"
+      "Bash(curl -v --max-time 5 http://localhost:8888/transform)",
+      "Bash(python3 -c \"import sys, json; [print\\(json.loads\\(l\\).get\\(''''message'''',{}\\).get\\(''''content'''',[{}]\\)[-1].get\\(''''text'''',''''''''\\)[:5000]\\) for l in sys.stdin if ''''text'''' in json.loads\\(l\\).get\\(''''message'''',{}\\).get\\(''''content'''',[{}]\\)[-1].get\\(''''type'''',''''''''\\)]\")",
+      "Bash(python3:*)",
+      "Bash(for m:*)",
+      "Bash(do echo:*)",
+      "Read(//home/kaiwu/Documents/gitea/nginz-njs/modules/**)",
+      "Bash(done)"
     ]
   }
 }

@@ -140,6 +140,9 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
+| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping, header injection, metrics, and workflow fallback for the native ratelimit module | scaffold |
+| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary routing policy: header injection, feature flag integration, session-sticky assignment, and metrics for the native canary module | scaffold |
+| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback, workflow recovery, and observability for the native circuit-breaker module | scaffold |
 
 ## Setup
 
@@ -163,8 +166,8 @@ This initializes four submodules:
 ### 2. Build nginx with native modules
 
 ```bash
-make                                      # default: echoz + jwt
-make NGINZ_MODULES="echoz jwt requestid"  # add more nginz modules
+make                                      # default: echoz jwt ratelimit canary circuit-breaker
+make NGINZ_MODULES="echoz jwt requestid"  # override the set
 ```
 
 What `make` does:

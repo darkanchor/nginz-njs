@@ -262,3 +262,203 @@ Recommended order for a stable distribution story:
 4. Only then consider a registry / installer workflow
 
 The platform value comes from having good reusable modules first, not from building a package manager before there is an ecosystem worth packaging.
+
+---
+
+## Milestone 2 — hybrid native+scripted sprints
+
+Milestone 1 (Sprints 1–3) built the scripted foundation with no native dependencies. Milestone 2 shifts to **maximizing the hybrid native+scripted value** — every module reads from native module variables or subrequest endpoints and provides scripted policy, orchestration, and composition on top.
+
+### Native module surface available to njs
+
+These are the nginx variables native modules expose that njs scripts read via `r.variables.<name>`:
+
+| Variable | Native Module | What njs Reads |
+|---|---|---|
+| `$jwt_claims` | jwt | Full JWT payload as JSON string |
+| `$jwt_nowtime` | jwt | Current Unix epoch timestamp |
+| `$jwt_claim_<X>` | jwt | Individual JWT claim value (registered via `jwt_claim` directive) |
+| `$jwt_header_<X>` | jwt | Individual JOSE header field (registered via `jwt_header` directive) |
+| `$ratelimit_result` | ratelimit | Rate limit decision ("allowed" / "denied") |
+| `$ratelimit_key` | ratelimit | The resolved rate limit key value |
+| `$ratelimit_source` | ratelimit | Source identifier ("ip" or "variable") |
+| `$ratelimit_cost` | ratelimit | Per-request cost (decimal string) |
+| `$ngz_canary` | canary | "1" if canary request, "0" otherwise |
+| `$ngz_circuit_state` | circuit-breaker | "closed", "open", or "half_open" |
+| `$ngz_request_id` | requestid | UUIDv4 string per request |
+| `$oidc_claim_sub` | oidc | OIDC subject claim |
+| `$oidc_claim_email` | oidc | OIDC email claim |
+| `$oidc_claim_name` | oidc | OIDC name claim |
+| `$nftset_result` | nftset | nftset lookup result ("matched", "not_found", "denied") |
+| `$nftset_matched_set` | nftset | Name of the matched nftables set |
+| `$echoz_request_body` | echoz | Raw request body string |
+
+Native modules with no variables expose data via subrequest JSON endpoints instead:
+
+| Module | njs Access Pattern | Response Format |
+|---|---|---|
+| redis | subrequest to `redis_pass` location | `{"value":"..."}` or `{"values":[...]}` |
+| consul | subrequest to `consul_services`/`consul_kv`/`consul_catalog` location | `{"services":[...]}`, `{"value":"..."}` |
+| healthcheck | subrequest to `health_status`/`health_liveness`/`health_readiness` locations | Full JSON status, `{"status":"alive"}`, `{"status":"ready"}` |
+| prometheus | subrequest to `prometheus_metrics` location | Prometheus text format |
+| cache-tags | subrequest to `cache_tags_purge` location | `{"tag":"..","purged":N}` or `{"tags":[...]}` |
+| waf | no njs-facing surface (purely internal access-phase gatekeeper) | — |
+
+### Sprint 4 — native-aware policy (reads native variables)
+
+#### 10. `ratelimit_policy` — scripted rate-limit response shaping and composition
+
+**Reads from:** `$ratelimit_result`, `$ratelimit_key`, `$ratelimit_source`, `$ratelimit_cost` (native ratelimit module)
+
+**Why scripted:**
+- Custom error responses (JSON, HTML) and retry-after header injection are policy logic, not counter logic
+- Per-key rate limit metrics via `metrics` module are log-phase string work
+- Composition with `authz` — rate limit by JWT claim (e.g. `$jwt_claim_sub` as ratelimit key)
+- Workflow integration: degraded-mode fallback when rate-limited
+
+**Planned surface:**
+- `ratelimit_policy/model` — `RateLimitContext` (result, key, source, cost), `PolicyDecision`, `PolicyConfig`
+- `ratelimit_policy/headers` — `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` injection
+- `ratelimit_policy/response` — custom JSON/HTML error body rendering for 429 responses
+- `ratelimit_policy/metrics` — emit rate limit decisions to `metrics` module (allowed/denied counts by key)
+- `ratelimit_policy/workflow` — `recover` wrapper that serves degraded response when rate-limited
+
+**Composes with:** `authz`, `metrics`, `session`, `workflow`, `http_client`
+
+#### 11. `canary_policy` — scripted canary routing policy
+
+**Reads from:** `$ngz_canary` (native canary module)
+
+**Why scripted:**
+- Canary-aware header injection and response tagging are policy logic
+- Feature flag integration: canary users get different flag evaluations
+- Session-aware canary: sticky canary assignment via `session` cookie
+- Metrics: track canary vs production request rates
+
+**Planned surface:**
+- `canary_policy/model` — `CanaryContext` (is_canary, headers), `PolicyDecision`
+- `canary_policy/headers` — inject `X-Canary: true`, custom routing headers
+- `canary_policy/feature_flags` — canary-aware flag evaluation: canary requests → different bucket
+- `canary_policy/session` — sticky canary assignment: once canary, always canary (via session store)
+- `canary_policy/metrics` — emit canary vs production request counts
+- `canary_policy/transform` — apply `response_transform` plans differently for canary responses
+
+**Composes with:** `feature_flags`, `session`, `metrics`, `response_transform`
+
+#### 12. `circuit_breaker_policy` — scripted circuit-breaker fallback and observability
+
+**Reads from:** `$ngz_circuit_state` (native circuit-breaker module)
+
+**Why scripted:**
+- Custom fallback responses per circuit state are policy logic
+- Workflow `recover` patterns that respect circuit state
+- Metrics emission on state transitions
+- Composition with `http_client` retry — suppress retries when circuit is open
+
+**Planned surface:**
+- `circuit_breaker_policy/model` — `CircuitState` (Closed | Open | HalfOpen), `CircuitContext`, `FallbackConfig`
+- `circuit_breaker_policy/fallback` — serve cached/degraded response when circuit is open
+- `circuit_breaker_policy/workflow` — `recover` wrapper: if circuit open, skip upstream and serve fallback
+- `circuit_breaker_policy/http_client` — retry policy modifier: no retries when circuit is open
+- `circuit_breaker_policy/metrics` — emit circuit state and fallback counts
+
+**Composes with:** `workflow`, `http_client`, `metrics`, `mlcache`
+
+### Sprint 5 — native-aware observability and tracing
+
+#### 13. `request_tracing` — distributed tracing glue
+
+**Reads from:** `$ngz_request_id` (native requestid module)
+
+**Why scripted:**
+- Request ID propagation to upstreams via `http_client` and `workflow` subrequests
+- Structured trace data emission (request ID, latency, status, upstream) in log phase
+- Session correlation: links request ID to session subject for debugging
+
+**Planned surface:**
+- `request_tracing/model` — `TraceContext` (request_id, start_time, spans), `Span` (name, duration, status)
+- `request_tracing/propagate` — inject `X-Request-ID` / `X-Trace-ID` into upstream requests and subrequests
+- `request_tracing/record` — accumulate spans through workflow steps
+- `request_tracing/emit` — log-phase structured trace output (JSON or logfmt)
+- `request_tracing/metrics` — per-request-ID latency and status via `metrics` module
+
+**Composes with:** `workflow`, `http_client`, `metrics`, `session`
+
+#### 14. `health_gateway` — scripted health aggregation and readiness policy
+
+**Reads from:** native healthcheck module's `/health_status` JSON endpoint (via subrequest)
+
+**Why scripted:**
+- Aggregate health across multiple backends via `http_client`
+- Readiness gate: `workflow` steps that check backend health before dispatching
+- Custom health response shaping (combine native health + session status + feature flag state)
+- Health-aware routing: skip unhealthy backends in workflow `first_ok`
+
+**Planned surface:**
+- `health_gateway/model` — `BackendHealth` (name, status, success_rate, probe_healthy), `AggregateHealth`
+- `health_gateway/aggregate` — fetch health from multiple backends, compute overall status
+- `health_gateway/gate` — `workflow` step wrapper: skip step if backend unhealthy
+- `health_gateway/response` — combine native health + scripted signals into custom health response
+- `health_gateway/cache` — cache backend health via `mlcache` to avoid probing on every request
+
+**Composes with:** `workflow`, `http_client`, `mlcache`, `session`, `feature_flags`
+
+### Sprint 6 — security composition
+
+#### 15. `security_gateway` — unified security policy composition
+
+**Reads from:** `$jwt_claims`, `$oidc_claim_*`, `$nftset_result`, `$ratelimit_result` (multiple native modules)
+
+**Why scripted:**
+- Composing multiple security signals (IP reputation + JWT claims + rate limit) into a unified allow/deny/challenge decision is pure policy branching
+- CAPTCHA/challenge page injection for borderline requests
+- WAF response shaping: custom error pages for WAF detections
+- Security decision metrics breakdown
+
+**Planned surface:**
+- `security_gateway/model` — `SecuritySignal` (JwtClaims | IpReputation | RateLimit | WafDetection), `SecurityDecision` (Allow | Deny | Challenge)
+- `security_gateway/evaluate` — compose signals into a single decision using `all_of` / `any_of` / `not_` patterns (same FP model as `authz`)
+- `security_gateway/challenge` — render CAPTCHA or challenge page for borderline requests
+- `security_gateway/response` — custom error pages per denial reason (401, 403, 429)
+- `security_gateway/metrics` — security decision breakdown (auth failures, rate limits, IP blocks, WAF hits)
+
+**Composes with:** `authz`, `session`, `feature_flags`, `http_client`, `metrics`, `response_transform`
+
+#### 16. `oidc_bridge` — OIDC-to-session and OIDC-to-policy bridge
+
+**Reads from:** `$oidc_claim_sub`, `$oidc_claim_email`, `$oidc_claim_name` (native oidc module)
+
+**Why scripted:**
+- Binding OIDC identity to session state is orchestration logic
+- Mapping OIDC claims to `authz` policy context is claim-to-role policy
+- Token refresh orchestration via `http_client`
+- Feature flag integration: OIDC user → `ByUserId` bucketing
+
+**Planned surface:**
+- `oidc_bridge/model` — `OidcIdentity` (sub, email, name, raw_claims), `SessionBinding`
+- `oidc_bridge/session` — create/update session on OIDC callback; bind OIDC claims to session subject
+- `oidc_bridge/claims` — map OIDC claims to `authz` claims dict (same shape as `authz/claims.from_vars`)
+- `oidc_bridge/refresh` — token refresh orchestration via `http_client` when access token expires
+- `oidc_bridge/feature_flags` — resolve OIDC subject → `ByUserId` for per-user flag bucketing
+
+**Composes with:** `authz`, `session`, `feature_flags`, `http_client`
+
+### What is deferred and why
+
+| Item | Why Deferred |
+|---|---|
+| Phantom token / OAuth introspection | RFC 9068 JWTs making it less urgent; extend JWT module when use case is concrete |
+| Worker event bus | Depends on native shared-memory signal ring landing in `nginz` first |
+| Geo/IP policy | Depends on native geo module (`libmaxminddb` binding) landing in `nginz` |
+| REST runtime API | Better as capstone once dynamic upstreams exist; no Zig work needed |
+| Cache policy / cache-purge | Depends on native selective-cache-purge module landing in `nginz` |
+
+### Sequencing rationale
+
+| Sprint | Theme | Native Modules Consumed | Scripted Modules Composed |
+|---|---|---|---|
+| 4 | Native-aware policy | ratelimit, canary, circuit-breaker | authz, metrics, session, feature_flags, workflow, http_client |
+| 5 | Observability + tracing | requestid, healthcheck | workflow, http_client, metrics, session |
+| 6 | Security composition | jwt, oidc, nftset, ratelimit, waf | authz, session, feature_flags, http_client, metrics |
+
+Each sprint produces modules that **read native variables and compose scripted policy on top** — the hybrid model where native Zig provides performance primitives and njs provides the policy shell. Every module in this batch would be impossible without the native layer, and equally impossible without the scripted composition layer.
