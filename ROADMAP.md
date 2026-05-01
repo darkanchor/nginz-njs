@@ -306,6 +306,150 @@ Native modules with no variables expose data via subrequest JSON endpoints inste
 | cache-tags | subrequest to `cache_tags_purge` location | `{"tag":"..","purged":N}` or `{"tags":[...]}` |
 | waf | no njs-facing surface (purely internal access-phase gatekeeper) | — |
 
+### Native variable expansion as an ecosystem tool
+
+The table above is the **current** native surface, not a hard ceiling.
+
+Some native modules expose rich nginx variables already (`jwt`, `ratelimit`, `canary`, `circuit-breaker`, `requestid`, `oidc`, `nftset`). Others currently expose subrequest JSON endpoints only, or no njs-facing surface at all. That is often the right initial design. But if we want to maximize the hybrid ecosystem, **selective variable exports are a power-enabler**.
+
+The rule is simple:
+
+- use **variables** for cheap, request-local facts that scripted modules want to branch on
+- use **subrequest endpoints** for bulk data, mutations, complex payloads, and operational APIs
+
+Variables matter because they let `nginz-njs` modules compose multiple native signals in one typed Gleam context without paying extra subrequest/JSON-parsing cost for every boolean or scalar decision.
+
+#### When exposing a variable is worth it
+
+Expose an nginx variable when the native module has a fact that is:
+
+- read frequently by scripted policy
+- scalar or short-string shaped
+- useful for routing, fallback, gating, challenge, or observability decisions
+- stable enough to document as part of the module surface
+
+Do **not** force everything into variables. Large structured responses, mutation flows, and operational control paths should stay as subrequest endpoints.
+
+#### Desired variable expansions by native module
+
+These are not required for Milestone 2, but they are high-leverage candidates if we want to deepen the hybrid model.
+
+##### `healthcheck`
+
+**Current surface:** subrequest JSON endpoints only (`/health_status`, `/health_liveness`, `/health_readiness`)
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$health_readiness` | Cheap readiness gate without subrequest | `health_gateway`, `workflow` |
+| `$health_liveness` | Fast liveness signal for custom health surfaces | `health_gateway` |
+| `$health_backend_healthy_count` | Aggregate routing/gating decisions | `health_gateway`, `workflow` |
+| `$health_backend_total_count` | Distinguish degraded vs total failure without parsing JSON | `health_gateway` |
+| `$health_backend_failure_count` | Failure-aware fallback and circuit-style policy | `health_gateway`, `circuit_breaker_policy` |
+
+These would let `health_gateway` evolve from “parse a simulated nginx variable” into a real hybrid module without making every check a JSON subrequest round-trip.
+
+##### `waf`
+
+**Current surface:** no njs-facing surface
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$waf_result` | Unified security composition: allow / deny / dryrun / error | `security_gateway` |
+| `$waf_rule_id` | Explain or shape downstream denial/challenge responses | `security_gateway`, `metrics` |
+| `$waf_score` | Escalation/challenge thresholds in scripted policy | `security_gateway` |
+| `$waf_category` | Branch on SQLi/XSS/reputation class without parsing logs | `security_gateway` |
+
+Important boundary: these variables should expose **facts for composition and observability**, not create a scripted bypass around the native access-phase block.
+
+##### `redis`
+
+**Current surface:** subrequest JSON endpoints only
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$redis_last_value` | Cheap policy/cache read for simple string lookups | `feature_flags`, `session` |
+| `$redis_last_exists` | Branch on presence/absence without JSON parsing | `feature_flags`, `workflow` |
+| `$redis_last_error` | Retry/fallback policy in scripted layers | `workflow`, `circuit_breaker_policy` |
+| `$redis_connection_state` | Health-aware routing and degraded-mode decisions | `health_gateway`, `workflow` |
+
+This is most valuable for simple read-through/cache-adapter patterns. Complex Redis operations should stay as subrequests.
+
+##### `consul`
+
+**Current surface:** subrequest JSON endpoints only
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$consul_kv_value` | Dynamic config lookup for policy/routing | `workflow`, `feature_flags` |
+| `$consul_kv_found` | Branch on presence/absence without parsing JSON | `workflow` |
+| `$consul_service_healthy_count` | Service-level gating and routing | `health_gateway`, `workflow` |
+| `$consul_lookup_error` | Fail-open/fail-closed policy in scripted adapters | `workflow`, `health_gateway` |
+
+If implemented, these likely need directive-scoped variable binding rather than unbounded dynamic variable generation.
+
+##### `prometheus`
+
+**Current surface:** Prometheus text endpoint only
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$prometheus_requests_total` | Load-aware routing and response shaping | `metrics`, `workflow` |
+| `$prometheus_error_rate` | Degraded-mode or challenge policy | `circuit_breaker_policy`, `security_gateway` |
+| `$prometheus_active_connections` | Simple load-shedding signal | `ratelimit_policy`, `workflow` |
+
+This is lower priority than `healthcheck` or `waf`, because Prometheus already has a strong scrape-oriented surface. But a few scalar variables could still be powerful.
+
+##### `cache-tags`
+
+**Current surface:** purge-oriented subrequest endpoint only
+
+**Desired variables:**
+
+| Variable | Why it matters | Likely scripted consumers |
+|---|---|---|
+| `$cache_tags_last_purged` | Observability and scripted follow-up behavior | `metrics`, `workflow` |
+| `$cache_tags_last_tag` | Structured logging / audit | `metrics` |
+| `$cache_tags_last_error` | Recovery policy after purge attempts | `workflow` |
+
+This is a lower-leverage candidate unless selective purge becomes a more central scripted orchestration flow.
+
+##### Already strong variable surfaces
+
+These native modules already follow the right hybrid pattern and are the reference model for future native surfaces:
+
+- `jwt` — claims, headers, current time
+- `ratelimit` — decision, key, source, cost
+- `canary` — canary/stable decision
+- `circuit-breaker` — circuit state
+- `requestid` — request ID
+- `oidc` — core identity claims
+- `nftset` — result and matched set
+- `echoz` — request body exposure
+
+For these modules, future work is more likely to be **adding one or two high-value facts** rather than inventing a new surface class.
+
+#### Priority order for variable-surface expansion
+
+If we decide to invest in native-variable expansion as a roadmap theme, the highest-value order is:
+
+1. `healthcheck` — directly unlocks a real `health_gateway`
+2. `waf` — directly unlocks stronger `security_gateway` composition
+3. `redis` — directly improves session/flag/cache adapters
+4. `consul` — strong for dynamic routing/config, but less central than the three above
+5. `prometheus` / `cache-tags` — useful, but more optional
+
+The reason for this order is ecosystem leverage: each of the top three removes a major reason for scripted modules to fall back to ad-hoc subrequest parsing when all they really need is a typed fact.
+
 ### Sprint 4 — native-aware policy (reads native variables)
 
 #### 10. `ratelimit_policy` — scripted rate-limit response shaping and composition
