@@ -140,15 +140,15 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
-| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Scripted rate-limit response shaping: native ratelimit variables → typed decision context → headers and custom 429 bodies | flawed |
-| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Scripted canary header/tagging layer: native canary decision → typed canary context → `X-Canary` visibility and future composition hooks | partial |
-| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Scripted circuit-breaker fallback layer: native circuit state → typed fallback policy → state-aware degraded responses | partial |
-| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | partial |
-| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Scripted health aggregation and readiness gating over native `$health_*` signals, with richer healthcheck fetching and cache-backed composition as follow-on layers | partial |
-| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Unified security policy composition: JWT, OIDC, rate-limit, and WAF signals → typed rules → allow/deny/challenge decisions | partial |
-| [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | OIDC identity mapping layer: native OIDC claims → authz claims, feature-flag keys, and inline session-binding metadata | partial |
+| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Historical design note for the aborted standalone rate-limit package; its phase-valid lessons now inform `ROADMAP.md` and future authz/workflow integration choices | aborted |
+| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Historical design note for canary rollout logic now intended to merge into `feature_flags` and `session` rather than survive as a sibling package | merge target |
+| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Historical design note for resilience helpers now intended to merge into `workflow` rather than remain a standalone fallback package | merge target |
+| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | milestone 2 keep |
+| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Deferred health aggregation package; revisit only when native `$health_*` and health endpoints stop being enough for real multi-source policy/aggregation needs | deferred |
+| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Historical design note for broader security-signal work now intended to merge into `authz` instead of forming a second policy engine | merge target |
+| [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | Historical design note for OIDC identity plumbing now intended to merge into `authz`, `feature_flags`, and `session` | merge target |
 
-Current roadmap focus keeps these partial hybrid modules in a dependency-driven Milestone 2 sequence: `4A` (`ratelimit_policy`, `canary_policy`, `circuit_breaker_policy`), `4B` (`request_tracing`, `oidc_bridge`), `5A` (`security_gateway`), then `5B` (`health_gateway`). See [ROADMAP.md](ROADMAP.md) for the full sequencing rationale and deferred hybrid-adapter follow-ons.
+Current roadmap focus no longer treats Milestone 2 as a seven-package hybrid batch. After the phase-validity review triggered by `ratelimit_policy`, Milestone 2 became a **consolidation milestone**: extend `authz`, `workflow`, `feature_flags`, and `session` with the useful hybrid ideas, keep only `request_tracing` as a standalone new package, and defer `health_gateway` until a real multi-source aggregation need exists. See [ROADMAP.md](ROADMAP.md) for the full triage and merge/defer rationale.
 
 ## Setup
 
@@ -403,7 +403,7 @@ Scripted modules in this repo orchestrate and compose the native primitives:
 - `nginz_njs_authz` uses JWT claim variables exposed by the native `jwt` module
 - `nginz_njs_workflow` drives subrequests through nginx locations backed by native modules
 - `nginz_njs_feature_flags` can later use njs built-in `ngx.shared` for runtime-togglable flag state
-- Milestone 2 extends that pattern with hybrid policy modules that consume native variables like `$waf_*` and `$health_*` while keeping richer composition in reusable Gleam libraries
+- Milestone 2 now extends that pattern mainly by **strengthening existing foundation modules** (`authz`, `workflow`, `feature_flags`, `session`) around phase-valid native surfaces, while keeping `request_tracing` as the only clearly standalone new package and deferring speculative wrappers like `health_gateway`
 
 See [ROADMAP.md](ROADMAP.md) for the scripted module roadmap.
 

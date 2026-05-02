@@ -4,7 +4,7 @@ Distributed tracing glue for the native `requestid` module. The pure tracing lay
 
 ## Roadmap position
 
-Sprint 4B (tracing and identity bridges) in Milestone 2 of `ROADMAP.md`. Depends on the native nginz `requestid` module. Composes with `workflow`, `http_client`, `metrics`, and `session`.
+`request_tracing` is the **only standalone package that survives the Milestone 2 reevaluation** in `ROADMAP.md`. It depends on the native nginz `requestid` module and composes with `workflow`, `http_client`, `metrics`, and `session`.
 
 ## Design goals
 
@@ -147,7 +147,7 @@ The newer native `prometheus` variables (`$prometheus_requests_total`, `$prometh
 
 ## Completion scope
 
-`request_tracing` is complete for its core contract as a header propagation and emission layer:
+`request_tracing` remains a valid standalone package because its reusable library surface stands on its own:
 
 - Pure trace model: `$ngz_request_id` → `TraceContext` → structured output
 - Header propagation: `X-Request-ID` and `X-Trace-ID` for upstream requests
@@ -155,7 +155,7 @@ The newer native `prometheus` variables (`$prometheus_requests_total`, `$prometh
 - nginx handlers: traced, traced_with_log, traced_with_session variants
 - Integration test coverage for all handler variants
 
-Future work focuses on composition through existing modules (`workflow`, `http_client`, `metrics`) rather than new handler logic.
+Future work should stay disciplined: deepen composition through existing modules (`workflow`, `http_client`, `metrics`) without turning this package into a second workflow or metrics system.
 
 ## Phased implementation plan
 
