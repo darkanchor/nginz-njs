@@ -24,6 +24,16 @@ pub fn canary_from_string(raw: String) -> CanaryAssignment {
   }
 }
 
+/// Parse a write-time canary input value.
+/// Only explicit "1" and "0" are accepted; anything else is invalid.
+pub fn parse_canary_input(raw: String) -> Result(Bool, Nil) {
+  case raw {
+    "1" -> Ok(True)
+    "0" -> Ok(False)
+    _ -> Error(Nil)
+  }
+}
+
 /// Load the sticky canary assignment for this session.
 /// Returns Unassigned when no assignment has been persisted.
 pub fn load_canary(dict_name: String, session_id: String) -> CanaryAssignment {

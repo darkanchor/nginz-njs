@@ -168,6 +168,25 @@ pub fn canary_from_string_unknown_is_unassigned_test() {
   |> should.equal(Unassigned)
 }
 
+pub fn parse_canary_input_one_test() {
+  assignment.parse_canary_input("1")
+  |> should.equal(Ok(True))
+}
+
+pub fn parse_canary_input_zero_test() {
+  assignment.parse_canary_input("0")
+  |> should.equal(Ok(False))
+}
+
+pub fn parse_canary_input_rejects_invalid_values_test() {
+  assignment.parse_canary_input("")
+  |> should.equal(Error(Nil))
+  assignment.parse_canary_input("true")
+  |> should.equal(Error(Nil))
+  assignment.parse_canary_input("2")
+  |> should.equal(Error(Nil))
+}
+
 // --- identity: OIDC subject normalization ---
 
 pub fn identity_from_oidc_sub_test() {

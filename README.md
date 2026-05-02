@@ -259,7 +259,7 @@ bun run deploy authz /etc/nginx/conf.d/authz
 bun scripts/deploy.js authz /etc/nginx/conf.d/authz
 ```
 
-The script copies `app.js` to `<dest>/njs/app.js`, prints the nginx config snippet to load the module, and warns if your nginx binary is missing any required native modules (declared in `[metadata] native_modules` in `gleam.toml`).
+The script copies `app.js` to `<dest>/njs/app.js`, prints the nginx config snippet to load the module, and warns if your nginx binary is missing any required native modules (declared in `[metadata.native]` in `gleam.toml`).
 
 When modules are stable they will be published to [Hex](https://hex.pm) as independent Gleam packages — versioning and dependency metadata live in `gleam.toml`. Users can depend on them directly via `gleam add nginz_njs_authz`.
 

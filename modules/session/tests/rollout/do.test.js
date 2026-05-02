@@ -56,6 +56,31 @@ describe("session — sticky rollout assignment", () => {
     expect(await getRes.text()).toBe("1");
   });
 
+  test("set_canary rejects invalid assignment values", async () => {
+    const startRes = await fetch(`${TEST_URL}/start?subject=user-invalid`);
+    const sid = cookieFrom(startRes);
+
+    const setRes = await fetch(`${TEST_URL}/canary/set?c=true`, {
+      headers: { Cookie: `sid=${sid}` },
+    });
+    expect(setRes.status).toBe(400);
+
+    const getRes = await fetch(`${TEST_URL}/canary/get`, {
+      headers: { Cookie: `sid=${sid}` },
+    });
+    expect(getRes.status).toBe(404);
+  });
+
+  test("set_canary rejects missing assignment values", async () => {
+    const startRes = await fetch(`${TEST_URL}/start?subject=user-missing`);
+    const sid = cookieFrom(startRes);
+
+    const setRes = await fetch(`${TEST_URL}/canary/set`, {
+      headers: { Cookie: `sid=${sid}` },
+    });
+    expect(setRes.status).toBe(400);
+  });
+
   test("assignment is sticky — overwrite canary=0 and it persists", async () => {
     const startRes = await fetch(`${TEST_URL}/start?subject=user-c`);
     const sid = cookieFrom(startRes);

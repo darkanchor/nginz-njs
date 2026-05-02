@@ -4,7 +4,7 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 
 ## Roadmap position
 
-`session` is a Tier-2 module in `ROADMAP.md`. No native nginz dependency is required — the store adapter uses the njs built-in `ngx.shared` dict via `mlcache/shared`.
+`session` is a Tier-2 module in `ROADMAP.md`. The core store adapter uses the njs built-in `ngx.shared` dict via `mlcache/shared`. The optional `start_oidc` handler additionally depends on the native `oidc` module and prefers a bridged `$session_oidc_sub` value, while falling back to the native `$oidc_claim_sub` in OIDC-gated content handlers.
 
 ## Design goals
 
@@ -45,8 +45,8 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 
 **`nginz_njs_session.gleam`** additions
 - `get_canary` — reads sticky canary assignment from session cookie; 200+"1"/"0" or 404 when unset
-- `set_canary` — stores assignment from `$session_canary` ("1"/"0") for the current session
-- `start_oidc` (async) — reads `$oidc_claim_sub` (set by the native oidc module in ACCESS phase), normalizes to `"oidc:{sub}"`, issues session; 204+Set-Cookie or 401 on empty subject
+- `set_canary` — stores assignment from `$session_canary` (must be `"1"` or `"0"`) for the current session; invalid input returns 400
+- `start_oidc` (async) — reads `$session_oidc_sub` when present, otherwise falls back to native `$oidc_claim_sub`; normalizes to `"oidc:{sub}"`, issues session; 204+Set-Cookie or 401 on empty subject
 - `end_session` now also deletes the `{sid}:canary` key on logout
 
 **`session/metrics.gleam`**
@@ -56,7 +56,7 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 
 **`nginz_njs_session.gleam`**
 - `describe` — returns a stable summary of the default session descriptor
-- `start` (async) — SHA-256 session ID from timestamp + remote addr; stores subject; sets Set-Cookie; returns 204
+- `start` (async) — random UUID-backed SHA-256 session ID; stores subject; sets Set-Cookie; returns 204
 - `verify` (sync) — reads session cookie, returns 204 + X-Session-Subject or 401; designed for `auth_request`
 - `end_session` (sync) — deletes session, clears client cookie; always returns 204
 
@@ -217,7 +217,7 @@ Goal: keep identity persistence here so `feature_flags` and `authz` can consume 
 - [x] OIDC-oriented session-binding helpers for carrying normalized subject identity into the existing session store (`session/identity.gleam`, `from_oidc_sub`/`to_oidc_sub`)
 - [x] shared session value shape that exposes both auth subject and rollout assignment — separate keys (`{sid}` + `{sid}:canary`) give independent TTL control and backward-compatible evolution
 - [x] docs/examples: `set $session_subject $ff_oidc_sub; js_content main.start;` binds OIDC → session; `get_canary`/`set_canary` expose sticky rollout assignment; downstream consumers (`feature_flags`, `authz`) read session facts without owning storage
-- [x] `start_oidc` handler — reads `$oidc_claim_sub` from native oidc module, normalizes to `"oidc:{sub}"`, issues session; native OIDC integration test in `tests/oidc/`
+- [x] `start_oidc` handler — prefers `$session_oidc_sub`, falls back to native `$oidc_claim_sub`, normalizes to `"oidc:{sub}"`, and issues session; native OIDC integration test in `tests/oidc/`
 
 ## TDD plan
 

@@ -28,6 +28,20 @@ describe("session — store", () => {
     expect(setCookie).toMatch(/^sid=[a-f0-9]{64}/);
   });
 
+  test("start generates distinct session ids for repeated requests from the same client", async () => {
+    const [r1, r2] = await Promise.all([
+      fetch(`${TEST_URL}/start?subject=alice`),
+      fetch(`${TEST_URL}/start?subject=alice`),
+    ]);
+
+    const sid1 = r1.headers.get("set-cookie")?.match(/^sid=([^;]+)/)?.[1];
+    const sid2 = r2.headers.get("set-cookie")?.match(/^sid=([^;]+)/)?.[1];
+
+    expect(sid1).not.toBeNull();
+    expect(sid2).not.toBeNull();
+    expect(sid1).not.toBe(sid2);
+  });
+
   test("verify with valid session returns 204 and X-Session-Subject", async () => {
     const startRes = await fetch(`${TEST_URL}/start?subject=bob`);
     expect(startRes.status).toBe(204);

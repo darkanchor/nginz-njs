@@ -18,7 +18,7 @@ fn describe(r: HTTPRequest) -> Nil {
 
 /// Create a new session for the authenticated subject set in $session_subject.
 /// Reads $session_dict and $session_ttl (default 3600) from nginx variables.
-/// Generates a SHA-256 session ID from the current timestamp and remote address.
+/// Generates a random UUID-backed SHA-256 session ID.
 /// Sets Set-Cookie on the response and returns 204.
 fn start(r: HTTPRequest) -> Promise(Nil) {
   let vars = http.get_variables(r)
@@ -45,10 +45,7 @@ fn start(r: HTTPRequest) -> Promise(Nil) {
         Error(_) -> http.remote_address(r)
       }
       let descriptor = model.default_descriptor()
-      let seed = int.to_string(ngx.now()) <> ":" <> http.remote_address(r)
-      use sid <- promise.await(
-        seed |> from_string(Utf8) |> crypto.compute_hash("sha256", _, Hex),
-      )
+      use sid <- promise.await(generate_session_id(r))
       store.save(dict, sid, subject, ttl_s)
       let _ =
         http.set_headers_out(
@@ -60,6 +57,16 @@ fn start(r: HTTPRequest) -> Promise(Nil) {
       promise.resolve(Nil)
     }
   }
+}
+
+fn generate_session_id(r: HTTPRequest) -> Promise(String) {
+  let seed =
+    crypto.random_uuid()
+    <> ":"
+    <> int.to_string(ngx.now())
+    <> ":"
+    <> http.remote_address(r)
+  seed |> from_string(Utf8) |> crypto.compute_hash("sha256", _, Hex)
 }
 
 /// Verify an incoming session cookie. Reads $session_dict from nginx variables.
@@ -154,8 +161,9 @@ fn get_canary(r: HTTPRequest) -> Nil {
   }
 }
 
-/// Create a session from a validated OIDC subject ($oidc_claim_sub).
-/// Called in the content phase after the oidc native module has run access-phase validation.
+/// Create a session from a validated OIDC subject.
+/// Prefers $session_oidc_sub when nginx has already bridged the subject, and
+/// falls back to $oidc_claim_sub for native oidc-gated content handlers.
 /// Normalizes the subject to "oidc:{sub}", stores it, sets Set-Cookie; returns 204.
 /// Returns 401 when the OIDC module provides an empty subject.
 fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
@@ -178,9 +186,23 @@ fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
           }
         Error(_) -> 3600
       }
-      let raw_sub = case ngx.get(vars, "oidc_claim_sub") {
-        Ok(v) -> ngx.to_string(v)
-        Error(_) -> ""
+      let raw_sub = case ngx.get(vars, "session_oidc_sub") {
+        Ok(v) -> {
+          let bridged = ngx.to_string(v)
+          case bridged {
+            "" ->
+              case ngx.get(vars, "oidc_claim_sub") {
+                Ok(native) -> ngx.to_string(native)
+                Error(_) -> ""
+              }
+            _ -> bridged
+          }
+        }
+        Error(_) ->
+          case ngx.get(vars, "oidc_claim_sub") {
+            Ok(v) -> ngx.to_string(v)
+            Error(_) -> ""
+          }
       }
       case identity.from_oidc_sub(raw_sub) {
         Error(_) -> {
@@ -189,10 +211,7 @@ fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
         }
         Ok(subject) -> {
           let descriptor = model.default_descriptor()
-          let seed = int.to_string(ngx.now()) <> ":" <> http.remote_address(r)
-          use sid <- promise.await(
-            seed |> from_string(Utf8) |> crypto.compute_hash("sha256", _, Hex),
-          )
+          use sid <- promise.await(generate_session_id(r))
           store.save(dict, sid, subject, ttl_s)
           let _ =
             http.set_headers_out(
@@ -209,7 +228,7 @@ fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
 }
 
 /// Persist a sticky canary assignment for the current session.
-/// Reads $session_dict, $session_canary ("1" or "0"), $session_ttl from nginx vars.
+/// Reads $session_dict, $session_canary (must be "1" or "0"), $session_ttl from nginx vars.
 fn set_canary(r: HTTPRequest) -> Nil {
   let vars = http.get_variables(r)
   let dict_name = case ngx.get(vars, "session_dict") {
@@ -234,12 +253,17 @@ fn set_canary(r: HTTPRequest) -> Nil {
                   }
                 Error(_) -> 3600
               }
-              let canary_val = case ngx.get(vars, "session_canary") {
-                Ok(v) -> ngx.to_string(v) == "1"
-                Error(_) -> False
+              let canary_raw = case ngx.get(vars, "session_canary") {
+                Ok(v) -> ngx.to_string(v)
+                Error(_) -> ""
               }
-              assignment.save_canary(dict, sid, canary_val, ttl_s)
-              http.return_code(r, 204)
+              case assignment.parse_canary_input(canary_raw) {
+                Error(_) -> http.return_code(r, 400)
+                Ok(canary_val) -> {
+                  assignment.save_canary(dict, sid, canary_val, ttl_s)
+                  http.return_code(r, 204)
+                }
+              }
             }
           }
       }

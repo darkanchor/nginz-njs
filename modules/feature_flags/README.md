@@ -53,8 +53,8 @@ set $ff_dark_mode_override on;   # force on regardless of rollout
 
 **`feature_flags/identity.gleam`**
 - `claim_to_key(value, fallback) -> BucketKey` — pure: non-empty → ByUserId, empty → ByRequestId(fallback)
-- `from_oidc_subject(vars, fallback) -> BucketKey` — reads `$ff_oidc_sub` bridge variable first; falls back to `$oidc_claim_sub` directly (set by native oidc module in ACCESS phase)
-- `from_jwt_claim(vars, claim, fallback) -> BucketKey` — reads `$ff_jwt_<claim>` bridge variable
+- `from_oidc_subject(vars, fallback) -> BucketKey` — reads `$ff_oidc_sub` bridge variable when present; falls back to native `$oidc_claim_sub` in OIDC-gated content handlers; otherwise returns `ByRequestId(fallback)`
+- `from_jwt_claim(vars, claim, fallback) -> BucketKey` — reads `$ff_jwt_<claim>` bridge variable; reusable library helper, not yet wired as a runtime `ff_key_type`
 
 **`nginz_njs_feature_flags.gleam`** additions
 - `evaluate_canary` — evaluates with native `$ngz_canary` as override source
@@ -66,11 +66,11 @@ set $ff_dark_mode_override on;   # force on regardless of rollout
 - `tests/state/` — dict-backed runtime flag state via `mlcache`
 - `tests/session/` — cross-module session-key resolution via the session bundle, including request-key fallback
 - `tests/canary/` — native canary module: header-based and percentage-based ForceOn routing, describe_canary annotation
-- `tests/oidc/` — native oidc module: `$oidc_claim_sub` → stable user bucketing; verifies parity with explicit `user_id` key
+- `tests/oidc/` — native oidc module: `$oidc_claim_sub` drives stable user bucketing; verifies parity with explicit `user_id` key
 
 ## Roadmap position
 
-`feature_flags` is a Tier-1 foundation module in `ROADMAP.md`. It delivers real value with no native dependency: deterministic bucketing, explicit targeting, override precedence, config parsing helpers, and routing-friendly outputs via both `js_content` and `js_set` handlers.
+`feature_flags` is a Tier-1 foundation module in `ROADMAP.md`. It delivers real value without native modules: deterministic bucketing, explicit targeting, override precedence, config parsing helpers, and routing-friendly outputs via both `js_content` and `js_set` handlers. Optional canary and OIDC adapters depend on the native `canary` / `oidc` modules plus explicit bridge variables.
 
 Shared state or hot reload via `ngx.shared` is a later adapter layer, not the heart of the module.
 
@@ -98,6 +98,18 @@ The evaluator should stay entirely side-effect free. Configuration lookup and re
 
 - njs built-in `ngx.shared` for runtime-togglable flag state (no native nginz dependency needed)
 - hot reload or sticky overrides backed by shared dict
+
+For OIDC-derived identity, the preferred runtime contract is an explicit bridge variable when the subject is already available before the content handler:
+
+```nginx
+set $ff_oidc_sub $oidc_claim_sub;
+set $ff_key_type oidc_sub;
+js_content main.bucket;
+```
+
+This avoids direct reads of native-style variable names from njs.
+
+When the request is already inside an OIDC-gated content handler, `from_oidc_subject` also falls back to native `$oidc_claim_sub` because a same-location `set $ff_oidc_sub $oidc_claim_sub;` bridge is evaluated too early in nginx's phase order.
 
 When `ff_key_type=session`, session-backed targeting only upgrades to `ByUserId(subject)` if the session cookie can be read and `$session_dict` resolves that session successfully. Otherwise evaluation falls back to the normal request key path (`$ff_key`, or remote address when unset).
 
