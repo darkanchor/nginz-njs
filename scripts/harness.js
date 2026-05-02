@@ -29,9 +29,9 @@ export function ensureBuild(moduleNames) {
     const distDir = join(ROOT, "dist");
     const modulesDir = join(ROOT, "modules");
     if (existsSync(distDir) && existsSync(modulesDir)) {
-      const allBuilt = readdirSync(modulesDir).every((name) =>
-        existsSync(join(distDir, name, "njs", "app.js"))
-      );
+      const allBuilt = readdirSync(modulesDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .every((e) => existsSync(join(distDir, e.name, "njs", "app.js")));
       if (allBuilt) return;
     }
     const r = spawnSync(["bun", "scripts/build.js"], {
@@ -55,16 +55,21 @@ function preparePrefix(moduleName) {
   const logsDir = join(prefix, "logs");
   if (existsSync(logsDir)) rmSync(logsDir, { recursive: true });
   mkdirSync(logsDir, { recursive: true });
+  // Ensure njs/ exists so deployBundle for extraModules never hits ENOENT.
+  mkdirSync(join(prefix, "njs"), { recursive: true });
   return prefix;
 }
 
-// Kill any leftover nginx from a previous crashed/interrupted test run.
+// Kill any leftover nginx from a previous crashed/interrupted test run and
+// wait for each process to exit so port 8888 is free before we start a new one.
 function killOrphans() {
   const result = spawnSync(["pgrep", "-f", NGINX_BIN], { stdout: "pipe" });
   const pids = result.stdout?.toString().trim();
   if (!pids) return;
   for (const pid of pids.split("\n")) {
     spawnSync(["kill", "-TERM", pid]);
+    // Wait for the process to disappear; ignore errors (already gone is fine).
+    spawnSync(["tail", "--pid", pid, "-f", "/dev/null"]);
   }
 }
 
