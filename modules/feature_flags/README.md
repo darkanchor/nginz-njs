@@ -134,6 +134,16 @@ Goal: improve operability without disturbing the pure evaluator.
 - [ ] startup-loaded file config
 - [ ] variant flag state in shared dict
 
+### Phase 6 — absorb experimentation identity and canary adapters
+
+Goal: keep rollout logic in `feature_flags` while absorbing the useful identity and canary fragments that do not deserve standalone packages.
+
+- [ ] canary-aware override helpers that translate phase-safe native canary facts into the existing override/evaluation model
+- [ ] richer decision metadata that can describe native canary input alongside the final flag or variant outcome
+- [ ] OIDC-derived identity helpers that resolve common subject claims into `ByUserId(...)` without duplicating claim parsing in every adapter
+- [ ] docs/examples for optional `X-Canary` tagging as thin adapter snippets rather than first-class module surface
+- [ ] composition recipes where canary facts, feature flags, and session identity cooperate without inventing a second rollout DSL
+
 ## TDD plan
 
 - [x] unit-test bucket determinism and rollout boundaries exhaustively (7 tests)
@@ -144,6 +154,9 @@ Goal: improve operability without disturbing the pure evaluator.
 - [x] add `tests/basic/` coverage for overrides, variants, and describe handlers (5 new scenarios)
 - [x] add integration tests for `js_set` usage (handler exists, njs runtime behavior verified)
 - [ ] isolate future shared-state adapters from the baseline deterministic evaluator tests
+- [ ] unit-test canary-aware override mapping and decision metadata
+- [ ] unit-test OIDC-derived `ByUserId` resolution helpers
+- [ ] integration-test native canary facts feeding the documented override path
 
 ## Atomic commit strategy
 
@@ -152,6 +165,7 @@ Goal: improve operability without disturbing the pure evaluator.
 - [x] `feature_flags: add variant evaluation`
 - [x] `feature_flags: add observability outputs`
 - [ ] `docs: document feature flag composition patterns`
+- [ ] `feature_flags: absorb canary-aware rollout adapters`
 
 ## Verification checklist
 
@@ -167,3 +181,5 @@ Goal: improve operability without disturbing the pure evaluator.
 - [x] Variant check: same key always maps to same variant (deterministic weight allocation)
 - [x] Variant check: `ForceOn` overrides disabled flag, `ForceOff` forces fallback
 - [x] Decision metadata: `describe` and `describe_variant` emit stable structured output
+- [ ] Native canary check: documented canary override path produces stable rollout decisions (`make` required)
+- [ ] OIDC identity check: documented subject mapping produces the same bucket as equivalent explicit `user_id`

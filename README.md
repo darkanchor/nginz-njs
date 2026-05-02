@@ -140,15 +140,10 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
 | [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
-| [`nginz_njs_ratelimit_policy`](modules/ratelimit_policy/README.md) | Historical design note for the aborted standalone rate-limit package; its phase-valid lessons now inform `ROADMAP.md` and future authz/workflow integration choices | aborted |
-| [`nginz_njs_canary_policy`](modules/canary_policy/README.md) | Historical design note for canary rollout logic now intended to merge into `feature_flags` and `session` rather than survive as a sibling package | merge target |
-| [`nginz_njs_circuit_breaker_policy`](modules/circuit_breaker_policy/README.md) | Historical design note for resilience helpers now intended to merge into `workflow` rather than remain a standalone fallback package | merge target |
 | [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | milestone 2 keep |
 | [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Deferred health aggregation package; revisit only when native `$health_*` and health endpoints stop being enough for real multi-source policy/aggregation needs | deferred |
-| [`nginz_njs_security_gateway`](modules/security_gateway/README.md) | Historical design note for broader security-signal work now intended to merge into `authz` instead of forming a second policy engine | merge target |
-| [`nginz_njs_oidc_bridge`](modules/oidc_bridge/README.md) | Historical design note for OIDC identity plumbing now intended to merge into `authz`, `feature_flags`, and `session` | merge target |
 
-Current roadmap focus no longer treats Milestone 2 as a seven-package hybrid batch. After the phase-validity review triggered by `ratelimit_policy`, Milestone 2 became a **consolidation milestone**: extend `authz`, `workflow`, `feature_flags`, and `session` with the useful hybrid ideas, keep only `request_tracing` as a standalone new package, and defer `health_gateway` until a real multi-source aggregation need exists. See [ROADMAP.md](ROADMAP.md) for the full triage and merge/defer rationale.
+Current roadmap focus no longer treats Milestone 2 as a seven-package hybrid batch. After the phase-validity review triggered by the old rate-limit wrapper idea, Milestone 2 became a **consolidation milestone**: extend `authz` with broader security and identity adapters, extend `workflow` with resilience helpers, extend `feature_flags` and `session` with experimentation identity and sticky rollout support, keep only `request_tracing` as a standalone new package, and defer `health_gateway` until a real multi-source aggregation need exists. See [ROADMAP.md](ROADMAP.md) for the active track breakdown and implementation order.
 
 ## Setup
 
@@ -336,7 +331,7 @@ gleam new . --name nginz_njs_my_module
 ngs = ">= 1.0.8 and < 2.0.0"
 ```
 
-3. Rename the generated entry file and write the `exports()` function:
+3. Keep the entry file thin and put reusable logic under `src/<name>/...`:
 
 ```bash
 mv src/nginz_njs_my_module.gleam src/nginz_njs_my_module.gleam  # already correct
@@ -344,12 +339,17 @@ mv test/nginz_njs_my_module_test.gleam test/nginz_njs_my_module_test.gleam
 ```
 
 ```gleam
+// src/my_module/respond.gleam
+pub fn ok_text() -> String { "OK\n" }
+
 // src/nginz_njs_my_module.gleam
+import my_module/respond
+import njs/http
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 
 fn handler(r: HTTPRequest) -> Nil {
-  r |> http.return_text(200, "OK\n")
+  r |> http.return_text(200, respond.ok_text())
 }
 
 pub fn exports() -> JsObject {

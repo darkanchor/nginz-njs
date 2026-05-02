@@ -189,12 +189,24 @@ The architectural rule: session lifecycle and policy belong in this reusable lib
 - [x] `tests/store/` integration test — start/verify/end lifecycle
 - [x] wire into `authz` (session_gate) and `feature_flags` (session key type)
 
+### Phase 4 — absorb rollout identity and OIDC session bindings
+
+Goal: keep identity persistence here so `feature_flags` and `authz` can consume sticky rollout or OIDC-derived session facts without duplicating storage policy.
+
+- [ ] session helpers for sticky canary assignment persistence and lookup
+- [ ] OIDC-oriented session-binding helpers for carrying normalized subject identity into the existing session store
+- [ ] shared session value shape that can expose both auth subject and rollout assignment to downstream consumers
+- [ ] docs/examples showing `session` as the persistence layer while `feature_flags` and `authz` remain the policy consumers
+
 ## TDD plan
 
 - [x] unit-test descriptor defaults and summaries
 - [x] unit-test cookie header construction and parsing
 - [x] unit-test validation edge cases
 - [x] integration-test lifecycle (start/verify/end) via `tests/store/`
+- [ ] unit-test sticky canary assignment serialization helpers
+- [ ] unit-test OIDC session-binding helpers
+- [ ] integration-test session-backed rollout identity shared with `feature_flags`
 
 ## Verification checklist
 
@@ -202,3 +214,4 @@ The architectural rule: session lifecycle and policy belong in this reusable lib
 - [x] `bun test modules/session/tests/basic/do.test.js` — basic integration passes
 - [x] `bun test modules/session/tests/store/do.test.js` — store lifecycle passes
 - [x] `bun run test:int` — all 36 basic integration tests pass (includes authz + feature_flags)
+- [ ] `bun test modules/session/tests/rollout/do.test.js` — sticky rollout/session binding passes

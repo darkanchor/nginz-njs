@@ -101,6 +101,20 @@ Cross-module direction: response/body shaping may later compose `response_transf
 
 Future integrations such as `response_transform`, `metrics`, or shared-state caching are intentionally outside the current completion bar.
 
+## Future consolidation track
+
+Milestone 2 no longer treats circuit-aware behavior as a sibling package. The useful part of that design belongs here because `workflow` already owns retry, recovery, fallback, and orchestration semantics.
+
+### Phase 4 — add circuit-aware resilience composition
+
+Goal: absorb the real value of the old circuit-breaker wrapper design without turning one native variable into a separate top-level module.
+
+- [ ] `workflow/circuit` helpers that read `$ngz_circuit_state` into a typed circuit fact
+- [ ] step wrappers such as `skip_when_open`, `allow_probe_when_half_open`, and `recover_when_open`
+- [ ] degraded-mode orchestration helpers that choose cached/static fallback data instead of hard-coded standalone 503 pages
+- [ ] retry-suppression helpers so open circuits do not combine with blind retries
+- [ ] response shaping only through existing merge/composition surfaces or `response_transform`, not bespoke fallback-page ownership inside `workflow`
+
 ## TDD plan
 
 - [x] unit-test `StepResult` variants, mapping/filtering helpers, and collection combinators
@@ -108,9 +122,13 @@ Future integrations such as `response_transform`, `metrics`, or shared-state cac
 - [x] type-check wrapper surfaces for retry, timeout, and recovery composition
 - [x] `tests/basic/` scenarios for sequential/parallel orchestration without native dependencies
 - [x] `tests/enrich/` as optional hybrid-model proof using native modules behind internal locations
+- [ ] unit-test circuit-state parsing and circuit-aware wrapper behavior
+- [ ] integration-test open / half-open / closed orchestration against native circuit variables
+- [ ] integration-test degraded fallback selection without coupling to standalone 503 page adapters
 
 ## Verification checklist
 
 - [x] `bun scripts/test.js workflow` — 33 unit tests pass
 - [x] `bun test modules/workflow/tests/basic/do.test.js` — 9 basic integration tests pass
 - [x] `bun test modules/workflow/tests/enrich/do.test.js` — 2 fan-out integration tests pass (`make` required)
+- [ ] `bun test modules/workflow/tests/circuit/do.test.js` — circuit-aware orchestration passes (`make` required)

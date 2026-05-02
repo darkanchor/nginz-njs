@@ -253,6 +253,17 @@ Goal: if upstream njs lands `js_access` and request-body readers, add access-pha
 - [ ] form-aware policy adapters for login / CSRF gates when upstream `readRequestForm()` stabilizes
 - [ ] native integration coverage proving phase behavior before claiming these paths as supported
 
+### Phase 6 — absorb broader security and identity adapters
+
+Goal: extend the existing `Decision`-based policy engine instead of reviving parallel packages for security signals or OIDC plumbing.
+
+- [ ] `authz/oidc` helpers that normalize `$oidc_claim_*` inputs into the existing policy context and claim dictionary
+- [ ] identity-mapping helpers for common OIDC fields (`sub`, `email`, `name`) so downstream policy stays inside one DSL
+- [ ] typed phase-safe security facts for native `$waf_*` and `$nftset_*` variables
+- [ ] rule helpers for allow-path / dry-run composition over WAF and nftset facts without promising generic deny-path reconstruction through `error_page`
+- [ ] challenge-oriented adapters only where they still collapse cleanly into `Decision` plus header/response enrichment, not a second gateway engine
+- [ ] end-to-end docs showing JWT, OIDC, WAF, and nftset wiring into one policy tree
+
 ## TDD plan
 
 - [x] unit-test each atomic rule in isolation
@@ -262,6 +273,9 @@ Goal: if upstream njs lands `js_access` and request-body readers, add access-pha
 - [x] unit-test decision helper semantics when `Deny` carries HTTP status (`deny_401`, `deny_403`, status propagation)
 - [ ] `tests/basic/` scenario for request-to-context extraction correctness
 - [x] native JWT scenario as optional proof of composition with nginz (`tests/jwt/`)
+- [ ] unit-test OIDC claim normalization and identity mapping helpers
+- [ ] unit-test WAF / nftset fact parsing and rule composition
+- [ ] native integration scenarios proving only the documented phase-safe WAF / nftset paths
 
 ## Verification checklist
 
@@ -272,5 +286,7 @@ Goal: if upstream njs lands `js_access` and request-body readers, add access-pha
 - [x] `bun test modules/authz/tests/enrich/do.test.js` — header injection passes
 - [x] `bun test modules/authz/tests/session/do.test.js` — session-backed `session_gate` passes
 - [x] `bun test modules/authz/tests/jwt/do.test.js` — JWT integration passes (`make` required)
+- [ ] `bun test modules/authz/tests/oidc/do.test.js` — OIDC identity mapping and policy composition pass
+- [ ] `bun test modules/authz/tests/security_signals/do.test.js` — documented WAF / nftset allow-path composition passes
 - [ ] Manual: configure a real RBAC policy, hit with admin/user/guest tokens, verify log output
 - [ ] Load test: 10k req/s baseline through the `check` handler to measure njs overhead

@@ -271,7 +271,7 @@ Milestone 1 (Sprints 1–3) built the scripted foundation. Milestone 2 started a
 
 The repo rule still stands: the reusable Gleam library surface is the product; nginx handler wiring is the deployment boundary. After the phase-validity review, Milestone 2 becomes a consolidation milestone: keep only the modules with real reusable library value, merge thin wrappers into existing foundations, and defer speculative wrappers until they have a concrete multi-module consumer.
 
-### Hard constraints learned from `ratelimit_policy`
+### Hard constraints learned from the aborted standalone ratelimit wrapper
 
 These are milestone-shaping constraints, not just local bugs:
 
@@ -295,25 +295,13 @@ These are milestone-shaping constraints, not just local bugs:
 | `healthcheck` | `$health_*`, health JSON endpoints | deferred `health_gateway` only if native surfaces stop being enough |
 | `redis`, `consul`, `prometheus`, `cache-tags` | scalar variables + operational endpoints | future follow-on integrations, not new standalone Milestone 2 packages |
 
-### Milestone 2 module triage
-
-| Module | Decision | Why |
-|---|---|---|
-| `ratelimit_policy` | **Abort as standalone package** | The deny-path package story is phase-invalid. The surviving value is too small to justify a top-level module. |
-| `canary_policy` | **Merge** into `feature_flags` + `session` | The real value is sticky assignment and rollout-aware evaluation, not `X-Canary` tagging by itself. |
-| `circuit_breaker_policy` | **Merge** into `workflow` | The valuable part is resilience composition (`skip_when_open`, fallback wrappers), not static 503 pages around one variable. |
-| `request_tracing` | **Keep standalone** | Propagation, span recording, and emitters are genuine reusable libraries with cross-module consumers. |
-| `health_gateway` | **Defer** | Native `healthcheck` already covers the baseline. A standalone scripted package only makes sense once there is a real multi-source aggregation need. |
-| `security_gateway` | **Merge** into `authz` | It duplicates `authz`’s policy engine and inherits the same phase risks when it tries to compose native deny-path signals. |
-| `oidc_bridge` | **Merge** into `authz` + `feature_flags` + `session` | Claim mapping and per-user identity plumbing already belong beside their existing consumers. |
-
 ### Resulting milestone shape
 
 Milestone 2 is no longer “seven sibling packages.” It is four stronger tracks.
 
 #### Track A — extend `authz` into the broader security/identity policy engine
 
-Absorb the real value from `security_gateway` and `oidc_bridge` into `authz`:
+Absorb the real value from the removed `security_gateway` and `oidc_bridge` plans into `authz`:
 
 - OIDC claim-to-policy adapters
 - richer security-signal modeling for WAF and nftset facts
@@ -324,11 +312,11 @@ The principle is simple: keep one policy DSL (`all_of` / `any_of` / `not_`), not
 
 **Open upstream enabler:** nginx/njs PR #1044 (`js_access` + request body/form readers) is a credible future uplift for this track if it lands substantially as proposed. It would let `authz` add optional pre-content adapters for access-phase policy, body-aware checks, and form-aware gates without routing everything through `js_content` or `auth_request` workarounds.
 
-This is **not current capability** and it does **not** reopen the package decisions above. Even if PR #1044 lands, it does not by itself reverse the `ratelimit_policy` abort, the merge of `security_gateway` / `oidc_bridge` into `authz`, or the `health_gateway` deferral. It is an enabler for existing foundations, not a reason to recreate the old seven-package Milestone 2 split.
+This is **not current capability** and it does **not** reopen the consolidation decisions above. Even if PR #1044 lands, it does not by itself justify recreating the old split; it is an enabler for the existing foundation modules instead.
 
 #### Track B — extend `workflow` with resilience primitives
 
-Absorb the real value from `circuit_breaker_policy`:
+Absorb the real value from the removed `circuit_breaker_policy` plan:
 
 - circuit-aware step wrappers
 - cached fallback and recovery primitives
@@ -339,7 +327,7 @@ This keeps resilience where orchestration already lives instead of creating a se
 
 #### Track C — extend `feature_flags` + `session` with experimentation identity
 
-Absorb the real value from `canary_policy`:
+Absorb the real value from the removed `canary_policy` plan:
 
 - sticky canary assignment
 - canary-aware flag overrides and bucketing
@@ -361,11 +349,11 @@ It is cross-cutting infrastructure, not a one-variable wrapper.
 
 ### What is explicitly not in Milestone 2 anymore
 
-- `ratelimit_policy` as a standalone package
-- `security_gateway` as a second policy engine beside `authz`
-- `oidc_bridge` as a separate identity-mapping package
-- `canary_policy` as a separate top-level rollout package
-- `circuit_breaker_policy` as a separate top-level fallback package
+- a standalone rate-limit response-shaping package around native deny-path state
+- a second policy engine beside `authz`
+- a separate identity-mapping package for OIDC plumbing
+- a separate top-level rollout package for canary tagging
+- a separate top-level fallback package around circuit state alone
 - `health_gateway` as a near-term scripted wrapper over native health facts
 
 ### Deferred hybrid adapters and follow-ons
@@ -384,9 +372,9 @@ It is cross-cutting infrastructure, not a one-variable wrapper.
 
 ### Recommended implementation order inside the revised milestone
 
-1. **Extend `authz`** — absorb `oidc_bridge` and the real, phase-safe parts of `security_gateway`
-2. **Extend `workflow`** — absorb `circuit_breaker_policy` and any resilience helpers that survive the phase review
-3. **Extend `feature_flags` + `session`** — absorb `canary_policy` as experimentation identity and sticky rollout composition
+1. **Extend `authz`** — absorb broader identity/security adapters and the real, phase-safe policy composition work
+2. **Extend `workflow`** — absorb resilience helpers and any circuit-aware wrappers that survive the phase review
+3. **Extend `feature_flags` + `session`** — absorb experimentation identity and sticky rollout composition
 4. **Ship `request_tracing`** — the only new standalone Milestone 2 package
 5. **Revisit `health_gateway` only if** a concrete multi-source aggregation requirement appears that native `healthcheck` does not already solve
 
