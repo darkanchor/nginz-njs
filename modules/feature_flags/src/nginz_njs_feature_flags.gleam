@@ -1,9 +1,11 @@
+import feature_flags/canary
 import feature_flags/evaluation.{
   type Flag, type Override, type VariantFlag, ByRemoteAddr, ByRequestId,
   ByUserId, Flag, Variant, VariantFlag, bucket, describe_boolean,
   describe_variant, evaluate, parse_enabled, parse_override, parse_rollout_pct,
   parse_variant_configs, select_variant,
 }
+import feature_flags/identity
 import feature_flags/state
 import gleam/int
 import njs/http.{type HTTPRequest}
@@ -62,6 +64,7 @@ fn resolve_key(r: HTTPRequest) -> evaluation.BucketKey {
     "user_id" -> ByUserId(key_val)
     "remote_addr" -> ByRemoteAddr(key_val)
     "session" -> resolve_session_key(r, vars, key_val)
+    "oidc_sub" -> identity.from_oidc_subject(vars, key_val)
     _ -> ByRequestId(key_val)
   }
 }
@@ -235,13 +238,49 @@ fn set_flag_handler(r: HTTPRequest) -> Nil {
   }
 }
 
+/// Evaluate with $ngz_canary as the override source.
+/// Canary requests (ngz_canary=1) always see the flag as ForceOn.
+fn evaluate_canary_handler(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let flag_name = case ngx.get(vars, "ff_name") {
+    Ok(v) -> ngx.to_string(v)
+    Error(_) -> ""
+  }
+  let flag = read_flag(r, flag_name)
+  let key = resolve_key(r)
+  let ov = canary.canary_to_override(r)
+  let decision = case evaluate(flag, key, ov) {
+    True -> "1"
+    False -> "0"
+  }
+  http.return_text(r, 200, decision)
+}
+
+/// Boolean flag decision metadata annotated with canary context.
+/// Format: "flag=<name> bucket=<n> result=<0|1> canary=<0|1>"
+fn describe_canary_handler(r: HTTPRequest) -> Nil {
+  let vars = http.get_variables(r)
+  let flag_name = case ngx.get(vars, "ff_name") {
+    Ok(v) -> ngx.to_string(v)
+    Error(_) -> ""
+  }
+  let flag = read_flag(r, flag_name)
+  let key = resolve_key(r)
+  let is_canary = canary.read_canary(r)
+  let ov = canary.canary_flag_to_override(is_canary)
+  let desc = describe_boolean(flag, key, ov)
+  http.return_text(r, 200, canary.annotate_decision(desc, is_canary))
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("evaluate", evaluate_handler)
   |> ngx.merge("evaluate_js_set", evaluate_js_set)
+  |> ngx.merge("evaluate_canary", evaluate_canary_handler)
   |> ngx.merge("variant", variant_handler)
   |> ngx.merge("describe", describe_handler)
   |> ngx.merge("describe_variant", describe_variant_handler)
+  |> ngx.merge("describe_canary", describe_canary_handler)
   |> ngx.merge("bucket", bucket_handler)
   |> ngx.merge("set_flag", set_flag_handler)
 }

@@ -1,9 +1,11 @@
+import feature_flags/canary
 import feature_flags/evaluation.{
   ByRemoteAddr, ByRequestId, ByUserId, Flag, ForceOff, ForceOn, NoOverride,
   Variant, VariantConfig, VariantFlag, bucket, describe_boolean,
   describe_variant, evaluate, is_enabled, parse_enabled, parse_override,
   parse_rollout_pct, parse_variant_configs, select_variant,
 }
+import feature_flags/identity
 import feature_flags/metrics
 import gleam/string
 import gleeunit
@@ -384,6 +386,40 @@ pub fn metrics_boolean_decision_disabled_test() {
   |> should.equal(
     "nginz.feature_flag_decision_total:1|c|#flag:dark_mode,key_type:request_id,result:disabled",
   )
+}
+
+// --- Canary override mapping ---
+
+pub fn canary_flag_true_is_force_on_test() {
+  canary.canary_flag_to_override(True)
+  |> should.equal(ForceOn)
+}
+
+pub fn canary_flag_false_is_no_override_test() {
+  canary.canary_flag_to_override(False)
+  |> should.equal(NoOverride)
+}
+
+pub fn canary_annotate_decision_canary_test() {
+  canary.annotate_decision("flag=f bucket=42 result=1", True)
+  |> should.equal("flag=f bucket=42 result=1 canary=1")
+}
+
+pub fn canary_annotate_decision_non_canary_test() {
+  canary.annotate_decision("flag=f bucket=42 result=0", False)
+  |> should.equal("flag=f bucket=42 result=0 canary=0")
+}
+
+// --- OIDC-derived identity ---
+
+pub fn identity_claim_to_key_subject_test() {
+  identity.claim_to_key("user-from-oidc", "fallback")
+  |> should.equal(ByUserId("user-from-oidc"))
+}
+
+pub fn identity_claim_to_key_empty_falls_back_test() {
+  identity.claim_to_key("", "req-id-123")
+  |> should.equal(ByRequestId("req-id-123"))
 }
 
 pub fn metrics_variant_selection_test() {

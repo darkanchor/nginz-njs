@@ -31,6 +31,24 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 - `save(dict_name, session_id, subject, ttl_s)` — persists session ID → subject with TTL
 - `delete(dict_name, session_id)` — invalidates a session; silent no-op on miss
 
+**`session/assignment.gleam`**
+- `CanaryAssignment` — `Assigned(Bool)` | `Unassigned`
+- `canary_to_string(Bool) -> String` — serializes True→"1", False→"0"
+- `canary_from_string(String) -> CanaryAssignment` — parses "1"→Assigned(True), "0"→Assigned(False), else Unassigned
+- `load_canary(dict, sid) -> CanaryAssignment` — reads sticky canary from `{sid}:canary` key
+- `save_canary(dict, sid, Bool, ttl_s)` — persists sticky assignment alongside the session
+- `delete_canary(dict, sid)` — removes canary key on session end
+
+**`session/identity.gleam`**
+- `from_oidc_sub(sub) -> Result(String, Nil)` — normalizes OIDC subject as `"oidc:{sub}"`; Error on empty
+- `to_oidc_sub(subject) -> Result(String, Nil)` — strips prefix; Error when not OIDC-prefixed
+
+**`nginz_njs_session.gleam`** additions
+- `get_canary` — reads sticky canary assignment from session cookie; 200+"1"/"0" or 404 when unset
+- `set_canary` — stores assignment from `$session_canary` ("1"/"0") for the current session
+- `start_oidc` (async) — reads `$oidc_claim_sub` (set by the native oidc module in ACCESS phase), normalizes to `"oidc:{sub}"`, issues session; 204+Set-Cookie or 401 on empty subject
+- `end_session` now also deletes the `{sid}:canary` key on logout
+
 **`session/metrics.gleam`**
 - `start()` — reusable lifecycle counter for successful session creation
 - `verify(success)` — reusable lifecycle counter for verification success/failure
@@ -45,6 +63,8 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 **Integration tests**
 - `tests/basic/` — verifies the describe path with stock nginx
 - `tests/store/` — verifies start/verify/end lifecycle against a live `ngx.shared` dict
+- `tests/rollout/` — verifies sticky canary assignment: set/get/persist/clear on end_session
+- `tests/oidc/` — verifies OIDC-backed session start: `start_oidc` issues `sid` with `oidc:{sub}` subject; requires native oidc module
 
 ## API reference
 
@@ -189,14 +209,15 @@ The architectural rule: session lifecycle and policy belong in this reusable lib
 - [x] `tests/store/` integration test — start/verify/end lifecycle
 - [x] wire into `authz` (session_gate) and `feature_flags` (session key type)
 
-### Phase 4 — absorb rollout identity and OIDC session bindings
+### Phase 4 — absorb rollout identity and OIDC session bindings ✓
 
 Goal: keep identity persistence here so `feature_flags` and `authz` can consume sticky rollout or OIDC-derived session facts without duplicating storage policy.
 
-- [ ] session helpers for sticky canary assignment persistence and lookup
-- [ ] OIDC-oriented session-binding helpers for carrying normalized subject identity into the existing session store
-- [ ] shared session value shape that can expose both auth subject and rollout assignment to downstream consumers
-- [ ] docs/examples showing `session` as the persistence layer while `feature_flags` and `authz` remain the policy consumers
+- [x] session helpers for sticky canary assignment persistence and lookup (`session/assignment.gleam`, `get_canary`/`set_canary` handlers)
+- [x] OIDC-oriented session-binding helpers for carrying normalized subject identity into the existing session store (`session/identity.gleam`, `from_oidc_sub`/`to_oidc_sub`)
+- [x] shared session value shape that exposes both auth subject and rollout assignment — separate keys (`{sid}` + `{sid}:canary`) give independent TTL control and backward-compatible evolution
+- [x] docs/examples: `set $session_subject $ff_oidc_sub; js_content main.start;` binds OIDC → session; `get_canary`/`set_canary` expose sticky rollout assignment; downstream consumers (`feature_flags`, `authz`) read session facts without owning storage
+- [x] `start_oidc` handler — reads `$oidc_claim_sub` from native oidc module, normalizes to `"oidc:{sub}"`, issues session; native OIDC integration test in `tests/oidc/`
 
 ## TDD plan
 
@@ -204,14 +225,16 @@ Goal: keep identity persistence here so `feature_flags` and `authz` can consume 
 - [x] unit-test cookie header construction and parsing
 - [x] unit-test validation edge cases
 - [x] integration-test lifecycle (start/verify/end) via `tests/store/`
-- [ ] unit-test sticky canary assignment serialization helpers
-- [ ] unit-test OIDC session-binding helpers
-- [ ] integration-test session-backed rollout identity shared with `feature_flags`
+- [x] unit-test sticky canary assignment serialization helpers
+- [x] unit-test OIDC session-binding helpers
+- [x] integration-test session-backed rollout identity shared with `feature_flags`
+- [x] integration-test OIDC-backed session start via native oidc module (`tests/oidc/`)
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js session` — 20 unit tests pass
+- [x] `bun scripts/test.js session` — 29 unit tests pass
 - [x] `bun test modules/session/tests/basic/do.test.js` — basic integration passes
 - [x] `bun test modules/session/tests/store/do.test.js` — store lifecycle passes
 - [x] `bun run test:int` — all 36 basic integration tests pass (includes authz + feature_flags)
-- [ ] `bun test modules/session/tests/rollout/do.test.js` — sticky rollout/session binding passes
+- [x] `bun test modules/session/tests/rollout/do.test.js` — sticky rollout/session binding passes
+- [x] `bun test modules/session/tests/oidc/do.test.js` — OIDC-backed session start passes (native oidc module required)

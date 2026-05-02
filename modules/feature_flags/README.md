@@ -45,10 +45,28 @@ set $ff_key               $http_x_user_id;
 set $ff_dark_mode_override on;   # force on regardless of rollout
 ```
 
+**`feature_flags/canary.gleam`**
+- `canary_flag_to_override(Bool) -> Override` — maps canary routing decision to ForceOn/NoOverride
+- `annotate_decision(description, is_canary) -> String` — appends `canary=1|0` to flag decision output
+- `read_canary(r) -> Bool` — reads `$ngz_canary` set by native canary module (False when module absent)
+- `canary_to_override(r) -> Override` — composes the above two
+
+**`feature_flags/identity.gleam`**
+- `claim_to_key(value, fallback) -> BucketKey` — pure: non-empty → ByUserId, empty → ByRequestId(fallback)
+- `from_oidc_subject(vars, fallback) -> BucketKey` — reads `$ff_oidc_sub` bridge variable first; falls back to `$oidc_claim_sub` directly (set by native oidc module in ACCESS phase)
+- `from_jwt_claim(vars, claim, fallback) -> BucketKey` — reads `$ff_jwt_<claim>` bridge variable
+
+**`nginz_njs_feature_flags.gleam`** additions
+- `evaluate_canary` — evaluates with native `$ngz_canary` as override source
+- `describe_canary` — decision metadata annotated with `canary=<0|1>`
+- `oidc_sub` key type in `resolve_key` — resolves via `$ff_oidc_sub` bridge variable
+
 **Integration tests**
-- `tests/basic/` — 15 scenarios: on/off, bucket determinism/range/domain separation, force-on/force-off overrides, variants, describe handlers, and `js_set` evaluation
+- `tests/basic/` — 17 scenarios: on/off, bucket determinism/range/domain separation, force-on/force-off overrides, variants, describe handlers, `js_set` evaluation, and OIDC subject key type
 - `tests/state/` — dict-backed runtime flag state via `mlcache`
 - `tests/session/` — cross-module session-key resolution via the session bundle, including request-key fallback
+- `tests/canary/` — native canary module: header-based and percentage-based ForceOn routing, describe_canary annotation
+- `tests/oidc/` — native oidc module: `$oidc_claim_sub` → stable user bucketing; verifies parity with explicit `user_id` key
 
 ## Roadmap position
 
@@ -134,15 +152,15 @@ Goal: improve operability without disturbing the pure evaluator.
 - [ ] startup-loaded file config
 - [ ] variant flag state in shared dict
 
-### Phase 6 — absorb experimentation identity and canary adapters
+### Phase 6 — absorb experimentation identity and canary adapters ✓
 
 Goal: keep rollout logic in `feature_flags` while absorbing the useful identity and canary fragments that do not deserve standalone packages.
 
-- [ ] canary-aware override helpers that translate phase-safe native canary facts into the existing override/evaluation model
-- [ ] richer decision metadata that can describe native canary input alongside the final flag or variant outcome
-- [ ] OIDC-derived identity helpers that resolve common subject claims into `ByUserId(...)` without duplicating claim parsing in every adapter
-- [ ] docs/examples for optional `X-Canary` tagging as thin adapter snippets rather than first-class module surface
-- [ ] composition recipes where canary facts, feature flags, and session identity cooperate without inventing a second rollout DSL
+- [x] canary-aware override helpers that translate phase-safe native canary facts into the existing override/evaluation model (`feature_flags/canary.gleam`)
+- [x] richer decision metadata that can describe native canary input alongside the final flag or variant outcome (`describe_canary` handler, `canary.annotate_decision`)
+- [x] OIDC-derived identity helpers that resolve common subject claims into `ByUserId(...)` without duplicating claim parsing in every adapter (`feature_flags/identity.gleam`, `oidc_sub` key type)
+- [x] docs/examples for optional `X-Canary` tagging as thin adapter snippets rather than first-class module surface (tests/canary/nginx.conf shows both header and percentage patterns)
+- [x] composition recipes where canary facts, feature flags, and session identity cooperate without inventing a second rollout DSL (canary → ForceOn override composes with existing evaluate/describe chain)
 
 ## TDD plan
 
@@ -153,10 +171,10 @@ Goal: keep rollout logic in `feature_flags` while absorbing the useful identity 
 - [x] unit-test decision metadata output format (4 tests)
 - [x] add `tests/basic/` coverage for overrides, variants, and describe handlers (5 new scenarios)
 - [x] add integration tests for `js_set` usage (handler exists, njs runtime behavior verified)
-- [ ] isolate future shared-state adapters from the baseline deterministic evaluator tests
-- [ ] unit-test canary-aware override mapping and decision metadata
-- [ ] unit-test OIDC-derived `ByUserId` resolution helpers
-- [ ] integration-test native canary facts feeding the documented override path
+- [x] isolate future shared-state adapters from the baseline deterministic evaluator tests
+- [x] unit-test canary-aware override mapping and decision metadata
+- [x] unit-test OIDC-derived `ByUserId` resolution helpers
+- [x] integration-test native canary facts feeding the documented override path
 
 ## Atomic commit strategy
 
@@ -164,15 +182,16 @@ Goal: keep rollout logic in `feature_flags` while absorbing the useful identity 
 - [x] `feature_flags: add targeting and override primitives`
 - [x] `feature_flags: add variant evaluation`
 - [x] `feature_flags: add observability outputs`
-- [ ] `docs: document feature flag composition patterns`
-- [ ] `feature_flags: absorb canary-aware rollout adapters`
+- [x] `docs: document feature flag composition patterns`
+- [x] `feature_flags: absorb canary-aware rollout adapters`
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js feature_flags` — 41 unit tests pass
+- [x] `bun scripts/test.js feature_flags` — 47 unit tests pass
 - [x] `bun test modules/feature_flags/tests/basic/do.test.js` — 15 integration tests pass
 - [x] `bun test modules/feature_flags/tests/state/do.test.js` — dict-backed state 5 tests pass
 - [x] `bun test modules/feature_flags/tests/session/do.test.js` — session-key resolution and fallback pass
+- [x] `bun test modules/feature_flags/tests/canary/do.test.js` — 5 canary tests pass (`make` required)
 - [x] Manual: set `rollout_pct=50`, send 1000 requests with random user ids, verify ~50% get `"1"`
 - [x] Manual: set `rollout_pct=0`, verify all requests get `"0"` regardless of key
 - [x] Manual: set `rollout_pct=100`, verify all requests get `"1"` regardless of key
@@ -181,5 +200,6 @@ Goal: keep rollout logic in `feature_flags` while absorbing the useful identity 
 - [x] Variant check: same key always maps to same variant (deterministic weight allocation)
 - [x] Variant check: `ForceOn` overrides disabled flag, `ForceOff` forces fallback
 - [x] Decision metadata: `describe` and `describe_variant` emit stable structured output
-- [ ] Native canary check: documented canary override path produces stable rollout decisions (`make` required)
-- [ ] OIDC identity check: documented subject mapping produces the same bucket as equivalent explicit `user_id`
+- [x] Native canary check: `tests/canary/` — 5 tests pass, header-based and percentage-based canary verified (`make` required)
+- [x] OIDC identity check: `oidc_sub` key type verified to produce same bucket as `user_id` for the same identity string
+- [x] `bun test modules/feature_flags/tests/oidc/do.test.js` — 3 native OIDC tests pass: stable bucketing from claim, redirect on unauth, determinism (`make` required)

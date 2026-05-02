@@ -122,4 +122,17 @@ describe("feature_flags — flag evaluation", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("0");
   });
+
+  test("oidc_sub key type buckets same as explicit user_id for same value", async () => {
+    const sub = "oidc-subject-abc";
+    const oidcRes = await fetch(`${TEST_URL}/bucket/oidc?sub=${sub}`);
+    const userRes = await fetch(`${TEST_URL}/bucket/user-id?id=${sub}`);
+    expect(await oidcRes.text()).toBe(await userRes.text());
+  });
+
+  test("oidc flag returns 1 when enabled with oidc_sub key type", async () => {
+    const res = await fetch(`${TEST_URL}/flag/oidc?sub=oidc-user-xyz`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("1");
+  });
 });

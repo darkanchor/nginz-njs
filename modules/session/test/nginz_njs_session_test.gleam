@@ -1,7 +1,9 @@
 import gleeunit
 import gleeunit/should
 import metrics/line
+import session/assignment.{Assigned, Unassigned}
 import session/cookie
+import session/identity
 import session/metrics
 import session/model.{
   CookieConfig, RotateNegative, SessionDescriptor, TtlNotPositive,
@@ -134,6 +136,59 @@ pub fn cookie_read_id_missing_test() {
 
 pub fn cookie_read_id_empty_header_test() {
   cookie.read_id("", "sid")
+  |> should.equal(Error(Nil))
+}
+
+// --- assignment: serialization ---
+
+pub fn canary_to_string_true_test() {
+  assignment.canary_to_string(True)
+  |> should.equal("1")
+}
+
+pub fn canary_to_string_false_test() {
+  assignment.canary_to_string(False)
+  |> should.equal("0")
+}
+
+pub fn canary_from_string_one_test() {
+  assignment.canary_from_string("1")
+  |> should.equal(Assigned(True))
+}
+
+pub fn canary_from_string_zero_test() {
+  assignment.canary_from_string("0")
+  |> should.equal(Assigned(False))
+}
+
+pub fn canary_from_string_unknown_is_unassigned_test() {
+  assignment.canary_from_string("")
+  |> should.equal(Unassigned)
+  assignment.canary_from_string("garbage")
+  |> should.equal(Unassigned)
+}
+
+// --- identity: OIDC subject normalization ---
+
+pub fn identity_from_oidc_sub_test() {
+  identity.from_oidc_sub("user-from-idp")
+  |> should.equal(Ok("oidc:user-from-idp"))
+}
+
+pub fn identity_from_oidc_sub_empty_test() {
+  identity.from_oidc_sub("")
+  |> should.equal(Error(Nil))
+}
+
+pub fn identity_to_oidc_sub_round_trip_test() {
+  let sub = "auth0|abc123"
+  let assert Ok(subject) = identity.from_oidc_sub(sub)
+  identity.to_oidc_sub(subject)
+  |> should.equal(Ok(sub))
+}
+
+pub fn identity_to_oidc_sub_non_oidc_test() {
+  identity.to_oidc_sub("api-key-subject")
   |> should.equal(Error(Nil))
 }
 
