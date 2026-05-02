@@ -17,6 +17,3 @@ gleeunit = ">= 1.0.0 and < 2.0.0"
 
 [javascript]
 runtime = "bun"
-
-[metadata.native]
-nginz = ["echoz"]

@@ -2,8 +2,8 @@
 
 # Native modules to compile from the nginz submodule.
 # Each name corresponds to a package directory under submodules/nginz/zig-out/modules/.
-# Available: echoz jwt hello requestid waf oidc ratelimit healthcheck canary redis consul pgrest
-NGINZ_MODULES ?= echoz jwt ratelimit canary circuit-breaker requestid healthcheck oidc
+# Available: echoz jwt hello requestid waf oidc ratelimit healthcheck canary circuit-breaker redis consul pgrest
+NGINZ_MODULES ?= echoz jwt requestid
 
 all: nginx
 

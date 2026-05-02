@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "bun";
-import { mkdirSync, rmSync, existsSync, copyFileSync } from "fs";
+import { mkdirSync, rmSync, existsSync, copyFileSync, readdirSync } from "fs";
 import { join, isAbsolute } from "path";
 
 let nginxProcess = null;
@@ -8,8 +8,23 @@ const ROOT = import.meta.dir.replace(/\/scripts$/, "");
 const NGINX_BIN = join(ROOT, "submodules/nginx/objs/nginx");
 const TEST_PORT = 8888;
 
-export function ensureBuild(moduleName) {
-  const args = moduleName ? [moduleName] : [];
+export function ensureBuild(moduleNames) {
+  // moduleNames is null (build all) or string[] (build specific modules)
+  const args = moduleNames && moduleNames.length > 0 ? moduleNames : [];
+
+  // Skip if all requested modules already have dist bundles
+  if (args.length > 0) {
+    const allBuilt = args.every((name) =>
+      existsSync(join(ROOT, "dist", name, "njs", "app.js"))
+    );
+    if (allBuilt) return;
+  } else {
+    // For "build all", check if at least one module is built (heuristic)
+    const distDir = join(ROOT, "dist");
+    if (existsSync(distDir) && readdirSync(distDir).length > 0) return;
+  }
+
+  // Rebuild
   const result = spawnSync(["bun", "scripts/build.js", ...args], {
     cwd: ROOT,
     stdout: "inherit",
@@ -33,7 +48,19 @@ function preparePrefix(moduleName) {
   return prefix;
 }
 
+// Kill any leftover nginx from a previous crashed/interrupted test run.
+function killOrphans() {
+  const result = spawnSync(["pgrep", "-f", NGINX_BIN], { stdout: "pipe" });
+  const pids = result.stdout?.toString().trim();
+  if (!pids) return;
+  for (const pid of pids.split("\n")) {
+    spawnSync(["kill", "-TERM", pid]);
+  }
+}
+
 export async function startNginx(configPath, moduleName, extraModules = []) {
+  killOrphans();
+
   const prefix = preparePrefix(moduleName);
   const absConfig = isAbsolute(configPath)
     ? configPath
@@ -54,12 +81,23 @@ export async function startNginx(configPath, moduleName, extraModules = []) {
   });
 
   await waitForPort(TEST_PORT);
+
+  // Verify the spawned process is still alive — a stale nginx on the port
+  // would let waitForPort succeed while our new process died from EADDRINUSE.
+  if (nginxProcess.exitCode !== null) {
+    throw new Error(
+      `nginx exited with code ${nginxProcess.exitCode} — port ${TEST_PORT} may be in use by another process`,
+    );
+  }
+
   return prefix;
 }
 
 export async function stopNginx() {
   if (nginxProcess) {
-    nginxProcess.kill("SIGQUIT");
+    // SIGTERM triggers fast shutdown; SIGQUIT is graceful and waits for
+    // workers to drain connections, which can exceed Bun's default 5s hook timeout.
+    nginxProcess.kill("SIGTERM");
     await nginxProcess.exited;
     nginxProcess = null;
   }

@@ -167,7 +167,7 @@ This initializes four submodules:
 ### 2. Build nginx with native modules
 
 ```bash
-make                                      # default: echoz jwt ratelimit canary circuit-breaker
+make                                      # default: echoz jwt requestid
 make NGINZ_MODULES="echoz jwt requestid"  # override the set
 ```
 
@@ -234,7 +234,7 @@ bun test modules/authz/tests/basic/do.test.js  # one scenario
 KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep logs for debug
 
 # --- native module integration tests (requires rebuilt nginx) ---
-make                             # build nginx with echoz + jwt from submodules/nginz
+make                             # build nginx with the default native set: echoz + jwt + requestid
 bun run test:native              # all scenarios including native-module tests
 
 # --- both (unit + basic integration) ---
@@ -242,6 +242,7 @@ bun run test                     # unit tests + basic integration tests
 
 # --- clean ---
 bun run clean                    # remove dist/, build/, manifest.toml
+                                 # next test run triggers a full rebuild (~50s cold)
 ```
 
 ### Deploying a module
@@ -282,8 +283,8 @@ nginz-njs/
 │   ├── build.js            ← build all/one module: gleam build + Bun.build()
 │   ├── deploy.js           ← copy app.js to dest, print nginx snippet, check native deps
 │   ├── test.js             ← gleam unit tests for all/one module
-│   ├── harness.js          ← bun integration test harness (nginx lifecycle)
-│   └── preload.js          ← bun preload: build before integration tests run
+│   ├── harness.js          ← bun integration test harness (nginx lifecycle, ensureBuild skip)
+│   └── preload.js          ← bun preload: ensures dist/ exists for all modules before tests
 ├── ROADMAP.md              ← scripted module roadmap
 ├── dist/                   ← build output (gitignored)
 ├── submodules/
@@ -390,10 +391,10 @@ When the performance-critical primitive is native (HMAC, JSON parsing, shared-me
 
 ## Relationship to nginz
 
-`nginz` is included as a submodule at `submodules/nginz/`. The `Makefile` builds selected native modules (default: `echoz`, `jwt`) via `zig build package` and links them into the nginx binary. The set of active modules is controlled by the `NGINZ_MODULES` variable:
+`nginz` is included as a submodule at `submodules/nginz/`. The `Makefile` builds selected native modules (default: `echoz`, `jwt`, `requestid`) via `zig build package` and links them into the nginx binary. The set of active modules is controlled by the `NGINZ_MODULES` variable:
 
 ```bash
-make                              # build with default: echoz jwt
+make                              # build with default: echoz jwt requestid
 make NGINZ_MODULES="echoz jwt requestid"  # extend the set
 ```
 

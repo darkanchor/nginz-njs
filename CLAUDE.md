@@ -157,6 +157,17 @@ location / { js_content main.handler_name; }
 
 This entry point is the final deployment boundary, not the place where most module logic should live.
 
+### Test discovery
+
+`bunfig.toml` restricts bare `bun test` to `modules/` via `root = "./modules"` — this excludes `submodules/nginz/` and its 39 native-module test files. Gleam-compiled unit-test artifacts (`*_test.mjs`) inside `modules/*/build/` are still discovered; they are harmless and pass when run under the njs runtime.
+
+Explicit `bun test modules/<name>/tests/<scenario>/do.test.js` (no glob/wildcard, pass the real files) always works as expected and also matches the preload's module-detection for selective rebuild.
+
+### Test criteira
+
+- fix gleam build error as well as **warning**
+- fix **timeout** tests, more than often they imply deeper issues
+
 ### Integration test harness
 
 `scripts/harness.js` manages nginx lifecycle. Tests import it with a path relative to the test file:
@@ -167,7 +178,7 @@ const CONF = join(import.meta.dir, "nginx.conf");  // use import.meta.dir for CW
 await startNginx(CONF, MODULE);  // starts nginx; runtime dir → dist/<name>/runtime/
 ```
 
-`scripts/preload.js` (loaded by `bunfig.toml`) triggers a build before any bun integration test suite runs.
+`scripts/preload.js` (loaded by `bunfig.toml`) triggers a build of all modules before any bun integration test suite runs. If `dist/` already contains bundles for every module it skips rebuilding — so cold runs take ~50s, warm runs are ~1.5s. Run `bun run clean` to force a full rebuild.
 
 ### Gleam integer arithmetic in compiled JS
 
@@ -190,4 +201,4 @@ Follow the nginz ROADMAP (`./submodules/nginz/ROADMAP.md`) and `./submodules/ngi
 4. `authz` — FP design reference; JWT claims need the native `jwt` module in the binary
 5. `session` — targets njs built-in `ngx.shared` for runtime backing
 
-The `Makefile` builds native modules from `submodules/nginz/` using `zig build package`. Default: `echoz jwt`. Override with `make NGINZ_MODULES="echoz jwt requestid"`.
+The `Makefile` builds native modules from `submodules/nginz/` using `zig build package`. Default: `echoz jwt requestid`. Override with `make NGINZ_MODULES="echoz jwt requestid"`.
