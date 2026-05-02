@@ -158,6 +158,14 @@ location /api/errors/ {
 - [x] `WhenStatus` for status-conditional field operations
 - [x] status read from nginx `$status` variable via `transform_with_status`
 
+### Phase 5 — milestone 3 boundary with generated responses
+
+Goal: keep `response_transform` focused on mutating existing payloads while Milestone 3 adds a separate `response_templating` module for generating new ones.
+
+- [ ] add docs/examples showing when to use `response_transform` (mutate an upstream payload) versus `response_templating` (render a fresh response)
+- [ ] add composition examples where `workflow` or `authz` chooses between generation and mutation without duplicating body logic inside handlers
+- [ ] keep `response_transform` responsible for post-upstream shaping only, not a general rendering/template engine
+
 ## TDD plan
 
 - [x] unit-test plan summaries and operation ordering

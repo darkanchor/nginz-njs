@@ -189,6 +189,15 @@ Future work should stay disciplined: deepen composition through existing modules
 - [ ] Log-phase emission via `js_log` handler pattern
 - [ ] Optional Prometheus-aware sampling or emission policies using `$prometheus_requests_total` / `$prometheus_error_rate`
 
+### Phase 4 — milestone 3 first-class ecosystem wiring
+
+Goal: make tracing feel native to the rest of the repo by wiring the existing reusable tracing surface through the modules that already need it.
+
+- [ ] compose `request_tracing/record` into documented `workflow` recipes and handler paths
+- [ ] compose propagation through `http_client` middleware helpers so trace forwarding is easy to adopt consistently
+- [ ] add runtime/API-facing summaries or debug surfaces only where they reuse the existing trace model cleanly
+- [ ] keep `request_tracing` focused on trace context, propagation, and emission rather than growing a second workflow or metrics subsystem
+
 ## TDD plan
 
 - [x] unit-test TraceContext construction and span addition

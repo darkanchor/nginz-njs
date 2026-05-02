@@ -164,6 +164,15 @@ All three downstream modules now consume mlcache directly — see the consumers 
 - [x] add stampede-collapse behavior on top of the shared dict contract (`try_lock`/`release_lock`)
 - [x] keep backing-store failure separate from cache semantics (silent Miss on unavailable dict)
 
+### Phase 4 — milestone 3 orchestration and control surfaces
+
+Goal: make `mlcache` easier to compose from workflow and operator-facing tooling without turning it into an application-specific cache engine.
+
+- [ ] document and test reusable read-through / stale-while-refresh recipes for `workflow`, `authz`, and `runtime_api`
+- [ ] add helper surfaces for cache inspection/invalidation that `runtime_api` can expose without embedding domain-specific key meaning into `mlcache`
+- [ ] add examples for cache-tag or selective purge orchestration only where a concrete scripted consumer exists
+- [ ] keep consumer-owned keying and invalidation semantics explicit so `mlcache` stays a cache primitive, not a policy package
+
 ## TDD plan
 
 - [x] unit-test config summaries first

@@ -272,6 +272,16 @@ Goal: extend the existing `Decision`-based policy engine instead of reviving par
 - [ ] challenge-oriented adapters only where they still collapse cleanly into `Decision` plus header/response enrichment, not a second gateway engine
 - [ ] end-to-end docs showing JWT, OIDC, WAF, and nftset wiring into one policy tree
 
+### Phase 7 — milestone 3 policy completion and response composition
+
+Goal: make `authz` feel like the complete scripted security shell while keeping rendering, transport, and native primitives in their proper homes.
+
+- [ ] complete the documented OIDC + WAF + nftset adapters from Phase 6 with stable request-to-context examples and recipes
+- [ ] add reusable security-fact normalization helpers that keep allow-path and dry-run composition readable in one policy tree
+- [ ] add composition examples where `authz` emits structured deny/allow context that `response_templating` or `response_transform` can consume without moving body ownership into `authz`
+- [ ] keep phantom-token / OAuth introspection explicitly gated on a concrete native JWT/introspection surface rather than inventing a parallel scripted verifier
+- [ ] integration/docs proving the Milestone 3 scope as one policy DSL over JWT, OIDC, WAF, nftset, session, and remote checks
+
 ## TDD plan
 
 - [x] unit-test each atomic rule in isolation

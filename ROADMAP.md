@@ -384,3 +384,120 @@ It is cross-cutting infrastructure, not a one-variable wrapper.
 - it extends proven foundation modules instead of creating sibling DSLs and adapters
 - it keeps only one genuinely new standalone package in the milestone
 - it follows the repo’s actual product rule: reusable Gleam building blocks first, nginx handlers second
+
+---
+
+## Milestone 3 — composition deepening and operability
+
+Milestone 3 should not undo the Milestone 2 lesson. The next step is **not** to mint a new family of thin wrappers around one native variable or one operational endpoint. The next step is to deepen the foundations we already trust, add only the standalone modules whose library surfaces are independently valuable, and make the scripted layer feel more like a real programmable gateway product.
+
+The milestone rule is therefore:
+
+1. **Prefer extending proven foundations** (`authz`, `workflow`, `mlcache`, `request_tracing`, `response_transform`) over inventing sibling packages.
+2. **Add a standalone module only when its reusable Gleam surface stands on its own** beyond a handler demo.
+3. **Keep native hot-path and shared-memory primitives native.** Milestone 3 is about composition, control, rendering, and operator-facing glue.
+
+### Track A — deepen `authz` into the main security and identity shell
+
+Milestone 2 already established `authz` as the one policy DSL. Milestone 3 should make that choice more complete:
+
+- finish the OIDC normalization and identity-mapping path as first-class `authz` helpers
+- add typed phase-safe security facts over WAF and nftset surfaces
+- make documented allow-path / dry-run composition stronger without claiming unsafe deny-path reconstruction
+- keep phantom-token / introspection work explicitly gated until the native JWT path exposes a concrete primitive worth consuming
+
+The principle remains: one policy engine, not one policy engine plus a cluster of adapters pretending to be products.
+
+### Track B — split response generation from response mutation cleanly
+
+Milestone 2 already gave us `response_transform`, which owns mutation of existing payloads. Milestone 3 should add the missing sibling concept: **response generation**.
+
+- `response_transform` continues to own masking, dropping, renaming, and conditional mutation of payloads that already exist
+- a new `response_templating` module should own lightweight response generation and rendering from request variables, session facts, and runtime data
+- `authz`, `workflow`, and `runtime_api` should compose these two surfaces rather than baking body logic into handlers directly
+
+This is a real standalone addition because “render a response from structured template inputs” is a reusable library surface, not just a demo filter.
+
+### Track C — add an operator-facing runtime API over existing foundations
+
+The repo now has useful runtime-capable surfaces spread across modules:
+
+- `feature_flags` can mutate runtime flag state
+- `session` has lifecycle handlers and runtime-backed facts
+- `mlcache` exposes runtime probes and lock behavior
+- `request_tracing` and `metrics` expose structured operational data
+
+Milestone 3 should add a reusable `runtime_api` library and adapter layer that:
+
+- provides stable JSON/text responses over existing foundations
+- exposes runtime inspection and control surfaces without inventing a second policy/config system
+- serves as the first operator-facing capstone for the scripted platform
+
+This should begin with the existing scripted surfaces first. Dynamic upstreams, native control-plane actions, and richer write paths stay gated until the native side is ready and the API contract is worth stabilizing.
+
+### Track D — make cache and workflow composition more product-shaped
+
+Milestone 2 established the primitives:
+
+- `workflow` owns orchestration and fallback semantics
+- `mlcache` owns cache semantics and stampede control
+
+Milestone 3 should turn that into clearer reusable recipes:
+
+- cache-aware read-through orchestration
+- stale-while-refresh patterns owned by composed workflow + cache helpers
+- selective purge/invalidation orchestration only when there is a concrete operational consumer
+- no separate cache-orchestration package unless the reusable library surface genuinely escapes those modules
+
+### Track E — wire tracing and metrics through real composition paths
+
+`request_tracing` and `metrics` already have reusable library surfaces. Milestone 3 should make them feel native to the rest of the repo:
+
+- trace span recording through `workflow`
+- trace propagation through `http_client` middleware
+- runtime/API-visible summaries when that stays within the existing ownership boundary
+- metrics emission hooks for modules that already expose structured events
+
+This is primarily integration work, not a new product line.
+
+### New standalone Milestone 3 modules
+
+Only two standalone additions are justified at this stage:
+
+| Module | Why it stands on its own |
+|---|---|
+| `response_templating` | reusable rendering/building-block surface for generated responses, distinct from payload mutation |
+| `runtime_api` | reusable operator/control surface over existing scripted modules, distinct from any one module’s demo handlers |
+
+### Explicit non-goals for Milestone 3
+
+- no standalone event-bus package before the native worker-signal primitive exists
+- no standalone geo/IP package before the native geo module lands
+- no standalone phantom-token/introspection package before the native JWT path exposes the right primitive
+- no second policy DSL beside `authz`
+- no attempt to reimplement native balancer, shared-memory coordination, crypto verification, or traffic engines in Gleam
+
+### Gated follow-ons after Milestone 3 core work
+
+| Item | Gate |
+|---|---|
+| Worker event bus | native shared-memory signal ring lands in `nginz` |
+| Geo/IP policy | native geo lookup module lands in `nginz` |
+| Phantom token / OAuth introspection | native JWT/introspection surface becomes concrete enough to compose cleanly |
+| Dynamic runtime control-plane actions | native upstream/control primitives are stable enough to justify a supported API contract |
+
+### Recommended implementation order inside Milestone 3
+
+1. **Write the milestone and module-boundary docs first** — lock the intended ownership lines before adding new scaffolds
+2. **Extend `authz`** — finish the strongest remaining policy/identity/security surface
+3. **Scaffold `response_templating`** — add the new rendering surface cleanly and keep it separate from transform logic
+4. **Scaffold `runtime_api`** — add the operator-facing library/adapter surface over current runtime-capable modules
+5. **Deepen `workflow` + `mlcache` + `request_tracing` composition** — wire the existing reusable libraries together
+6. **Revisit gated follow-ons only after native prerequisites land**
+
+### Why this milestone shape is stronger
+
+- it keeps building around the modules that already proved their value
+- it adds new standalone modules only where the library surface is genuinely reusable
+- it makes the scripted layer feel more product-like without violating the native/scripted boundary
+- it leaves native-dependent ideas visible, but correctly gated

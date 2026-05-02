@@ -147,6 +147,14 @@ Goal: connect the pure metric model to concrete StatsD/DogStatsD line rendering 
 - [ ] add batching or sink configuration only after the event contract is stable
 - [x] keep emission failure handling separate from event modeling (validation is pre-emission)
 
+### Phase 4 — milestone 3 emission and operator-facing transport
+
+Goal: keep the metric model stable while making it easier for other modules and runtime tooling to move those values toward real sinks.
+
+- [ ] add batching or sink configuration once the event contract and module consumers are stable enough to support it cleanly
+- [ ] add composition examples for `workflow`, `webhook`, `request_tracing`, and `runtime_api`
+- [ ] keep sink delivery and transport ownership separate from the pure metric/event model
+
 ## TDD plan
 
 - [x] unit-test line rendering, tag ordering, sample rate, namespace (10 rendering tests)

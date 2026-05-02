@@ -123,6 +123,16 @@ Goal: absorb the real value of the old circuit-breaker wrapper design without tu
 - [x] retry-suppression helpers so open circuits do not combine with blind retries
 - [x] response shaping only through existing merge/composition surfaces or `response_transform`, not bespoke fallback-page ownership inside `workflow`
 
+### Phase 5 — milestone 3 composition recipes
+
+Goal: turn the existing orchestration core into the place where response shaping, tracing, and cache-aware resilience compose cleanly.
+
+- [ ] compose `request_tracing/record` with workflow step execution so span recording becomes a normal recipe instead of an external note
+- [ ] add cache-aware orchestration examples and helpers that pair `workflow` with `mlcache` for read-through, stale-while-refresh, and fallback selection
+- [ ] add response-generation examples showing when `workflow` should hand final shaping to `response_templating` versus `response_transform`
+- [ ] add metrics/tracing instrumentation recipes without baking those concerns into the step algebra itself
+- [ ] integration coverage for degraded fallback selection plus one cache-aware or tracing-aware composed workflow
+
 ## TDD plan
 
 - [x] unit-test `StepResult` variants, mapping/filtering helpers, and collection combinators

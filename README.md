@@ -129,21 +129,23 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 
 ## Module catalog
 
-| Module | Purpose | Status |
+| Module | Purpose | Maturity |
 |---|---|---|
-| [`nginz_njs_http_client`](modules/http_client/README.md) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | complete |
-| [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | complete |
-| [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines; parallel/sequential runners, retry/timeout/recover wrappers, merge strategies | complete |
-| [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | complete |
-| [`nginz_njs_session`](modules/session/README.md) | Cookie modeling, session lifecycle, `ngx.shared`-backed store; consumed by authz (`session_gate`) and feature_flags (session key type) | complete |
-| [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache with `ngx.shared` adapter, stale/hit/miss semantics, stampede-collapse; backing layer for authz, feature_flags, and session | complete |
-| [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | complete |
-| [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | complete |
-| [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | complete |
-| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | milestone 2 keep |
-| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Deferred health aggregation package; revisit only when native `$health_*` and health endpoints stop being enough for real multi-source policy/aggregation needs | deferred |
+| [`nginz_njs_http_client`](modules/http_client/README.md) | Typed `ngx.fetch()` wrapper with emitted validation, timeout, policy, and middleware support | core foundation |
+| [`nginz_njs_authz`](modules/authz/README.md) | Policy-based authorization: method, path, header, JWT claim, remote OPA, caching, header enrichment | mature core, expanding |
+| [`nginz_njs_workflow`](modules/workflow/README.md) | Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines; parallel/sequential runners, retry/timeout/recover wrappers, merge strategies | mature core, expanding |
+| [`nginz_njs_feature_flags`](modules/feature_flags/README.md) | Feature flag evaluation with stable bucketing for A/B routing | product-ready foundation |
+| [`nginz_njs_session`](modules/session/README.md) | Cookie modeling, session lifecycle, `ngx.shared`-backed store; consumed by authz (`session_gate`) and feature_flags (session key type) | product-ready foundation |
+| [`nginz_njs_mlcache`](modules/mlcache/README.md) | Two-level cache with `ngx.shared` adapter, stale/hit/miss semantics, stampede-collapse; backing layer for authz, feature_flags, and session | shared-state foundation |
+| [`nginz_njs_response_transform`](modules/response_transform/README.md) | Plan-based JSON field masking, dropping, renaming, and status-conditional ops with `js_body_filter` adapter | focused and ready |
+| [`nginz_njs_webhook`](modules/webhook/README.md) | Webhook signing, delivery composition over http_client, and callback verification | ready, operational follow-ons |
+| [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | library ready, transport next |
+| [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | milestone 2 pillar, wiring next |
+| [`nginz_njs_response_templating`](modules/response_templating/README.md) | Lightweight response generation and rendering from request/runtime facts; companion to response_transform rather than a replacement | milestone 3 foundation draft |
+| [`nginz_njs_runtime_api`](modules/runtime_api/README.md) | Operator-facing runtime inspection and control surface over flags, cache, session, and other scripted module state | milestone 3 control-plane draft |
+| [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Deferred health aggregation package; revisit only when native `$health_*` and health endpoints stop being enough for real multi-source policy/aggregation needs | deferred by design |
 
-Current roadmap focus no longer treats Milestone 2 as a seven-package hybrid batch. After the phase-validity review triggered by the old rate-limit wrapper idea, Milestone 2 became a **consolidation milestone**: extend `authz` with broader security and identity adapters, extend `workflow` with resilience helpers, extend `feature_flags` and `session` with experimentation identity and sticky rollout support, keep only `request_tracing` as a standalone new package, and defer `health_gateway` until a real multi-source aggregation need exists. See [ROADMAP.md](ROADMAP.md) for the active track breakdown and implementation order.
+Current roadmap focus keeps Milestone 2 as the consolidation milestone that strengthened the foundations, then uses Milestone 3 to deepen composition and operability around those foundations. That means extending `authz`, `workflow`, `mlcache`, `request_tracing`, and related modules, while adding only two standalone Milestone 3 packages with real independent library value: `response_templating` and `runtime_api`. See [ROADMAP.md](ROADMAP.md) for the active track breakdown and implementation order.
 
 ## Setup
 
@@ -218,6 +220,10 @@ The important implication is that `gleam build` produces a normal reusable Gleam
 ### Commands
 
 ```bash
+# --- dependency updates ---
+bun run update                   # run gleam update for all modules
+bun run update:module authz      # run gleam update for one module only
+
 # --- build ---
 bun run build                    # build all modules → dist/
 bun run build:module authz       # build one module only
@@ -283,6 +289,7 @@ nginz-njs/
 │   ├── build.js            ← build all/one module: gleam build + Bun.build()
 │   ├── deploy.js           ← copy app.js to dest, print nginx snippet, check native deps
 │   ├── test.js             ← gleam unit tests for all/one module
+│   ├── update.js           ← gleam dependency updates for all/one module
 │   ├── harness.js          ← bun integration test harness (nginx lifecycle, ensureBuild skip)
 │   └── preload.js          ← bun preload: ensures dist/ exists for all modules before tests
 ├── ROADMAP.md              ← scripted module roadmap
@@ -329,7 +336,7 @@ gleam new . --name nginz_njs_my_module
 
 ```toml
 [dependencies]
-ngs = ">= 1.0.8 and < 2.0.0"
+ngs = ">= 1.0.9 and < 2.0.0"
 ```
 
 3. Keep the entry file thin and put reusable logic under `src/<name>/...`:
