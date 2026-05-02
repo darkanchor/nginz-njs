@@ -8,7 +8,7 @@
 
 **The problem**: sometimes “is this backend healthy?” is not enough. Real readiness decisions can depend on several signals at once, such as backend health, rollout state, policy context, or scripted logic that does not fit into one native variable.
 
-**How it would solve it**: this module is meant to combine several health signals into one answer that nginx can act on. The idea is useful when a simple yes-or-no backend check stops matching the real operational picture.
+**How it would solve it**: this module is meant to combine several health signals into one answer that nginx can act on. The idea is useful when a simple yes-or-no backend check stops matching the real operational picture. When that day comes, it should let you mix those signals in the way your environment actually works instead of forcing one canned definition of healthy.
 
 **When you would use this**: not yet, and that honesty matters. Today the native health surface already covers the common cases well. This module becomes worth reviving only when you truly need multi-source health decisions instead of a thin wrapper around what nginx already knows.
 

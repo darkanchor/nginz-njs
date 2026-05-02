@@ -6,7 +6,7 @@ Session-state library for nginx written in Gleam. Cookie modeling, session lifec
 
 **The problem**: HTTP forgets everything between requests, but your product cannot. Once someone logs in, or once you assign them to a rollout path, you need later requests to remember who they are and what state they already carry.
 
-**How it solves it**: this module gives nginx a clear session lifecycle instead of leaving each feature to invent its own cookie and storage rules. One place starts the session, one place verifies it, and other modules can build on that shared identity instead of duplicating the same machinery.
+**How it solves it**: this module gives nginx a clear session lifecycle instead of leaving each feature to invent its own cookie and storage rules. One place starts the session, one place verifies it, and other modules can build on that shared identity instead of duplicating the same machinery. That gives you a stable center other modules can plug into, whether you only need login memory or a richer mix of identity and sticky behavior.
 
 **When you would use this**: use it when requests need continuity. That could mean a normal login session, a sticky rollout assignment, or simply giving downstream policy and feature logic a stable notion of “this is the same user as before.”
 

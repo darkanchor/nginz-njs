@@ -6,7 +6,7 @@ Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure has
 
 **The problem**: shipping a feature to everyone at once is risky. You want a safer way to turn things on gradually, test ideas on a subset of users, and keep the same person on the same experience every time.
 
-**How it solves it**: this module makes rollout decisions directly inside nginx in a predictable way. You can start small, grow the rollout over time, and keep the targeting logic understandable instead of relying on ad-hoc percentages scattered through config.
+**How it solves it**: this module makes rollout decisions directly inside nginx in a predictable way. You can start small, grow the rollout over time, and keep the targeting logic understandable instead of relying on ad-hoc percentages scattered through config. It works as a simple release switch, but it also gives you enough range to shape a rollout with real finesse.
 
 **When you would use this**: use it for dark launches, canary releases, A/B tests, staged migrations, or any moment where the question is not “is this feature built?” but “who should see it right now?”
 

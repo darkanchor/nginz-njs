@@ -6,7 +6,7 @@ Webhook signing and callback-verification for nginx written in Gleam. Composes `
 
 **The problem**: webhook integrations look simple until you need to trust them. Outbound calls need signing and retry behavior. Inbound callbacks need signature verification so you know the sender is real and the payload was not tampered with.
 
-**How it solves it**: this module gives you one consistent place to handle both sides of that exchange. It can sign what you send, verify what you receive, and keep the transport details separate from the business event itself.
+**How it solves it**: this module gives you one consistent place to handle both sides of that exchange. It can sign what you send, verify what you receive, and keep the transport details separate from the business event itself. You can keep the flow simple or mix signing, delivery, verification, and retries in the way each integration calls for.
 
 **When you would use this**: use it when nginx is sending signed events to another system, or when nginx is the receiver for signed callbacks from vendors and internal services. It is for the moment when “just POST some JSON” is no longer good enough.
 

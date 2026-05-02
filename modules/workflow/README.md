@@ -6,7 +6,7 @@ Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines for nginx
 
 **The problem**: one incoming request often depends on several other systems. You may need to check auth, load a profile, fetch feature data, and then combine the answers before you can respond.
 
-**How it solves it**: this module treats that multi-step flow as something you can describe clearly instead of improvising it inside one big handler. It lets you run steps in parallel, keep the order explicit when order matters, and decide what should happen when one piece fails.
+**How it solves it**: this module treats that multi-step flow as something you can describe clearly instead of improvising it inside one big handler. It lets you run steps in parallel, keep the order explicit when order matters, and decide what should happen when one piece fails. You can keep the flow small or build something much richer without losing the shape of it.
 
 **When you would use this**: use it when nginx is acting like a coordinator in front of other services. It is especially useful for enrichment, fan-out APIs, fallback behavior, and any request path where “call A, B, maybe C, then merge the result” is the real job.
 

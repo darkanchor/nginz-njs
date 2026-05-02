@@ -6,7 +6,7 @@ Typed `ngx.fetch()` wrapper for nginx written in Gleam — the highest-priority 
 
 **The problem**: your nginx layer needs to call another service, but raw fetch code quickly turns into repetitive glue for headers, tokens, timeouts, query strings, and error handling.
 
-**How it solves it**: this module gives you one clean way to describe an outgoing HTTP call and then execute it. That keeps the request shape readable, predictable, and easy to reuse across different handlers instead of rebuilding the same fetch logic over and over.
+**How it solves it**: this module gives you one clean way to describe an outgoing HTTP call and then execute it. That keeps the request shape readable, predictable, and easy to reuse across different handlers instead of rebuilding the same fetch logic over and over. It starts simple, but it also gives the rest of the system a strong base to build on.
 
 **When you would use this**: use it when nginx needs to talk to an auth service, profile service, internal API, or webhook target. It is the module that turns “we need to call something else first” into a normal, manageable building block.
 

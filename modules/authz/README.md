@@ -6,7 +6,7 @@ Policy-based authorization for nginx written in Gleam. Rules are pure functions;
 
 **The problem**: access rules usually start simple and then become scattered everywhere. One path checks methods, another checks JWT roles, another calls an external policy service, and soon nobody can clearly explain why a request was allowed or denied.
 
-**How it solves it**: this module gives you one place to express those decisions as readable rules. Instead of burying policy inside tangled nginx config, you can describe the intent clearly, combine rules safely, and keep the final answer visible: allow, or deny for a specific reason.
+**How it solves it**: this module gives you one place to express those decisions as readable rules. Instead of burying policy inside tangled nginx config, you can describe the intent clearly, combine rules safely, and keep the final answer visible: allow, or deny for a specific reason. It stays simple when the policy is simple, and still gives you room to grow into something much more serious.
 
 **When you would use this**: use it when nginx is the front door and you want that front door to make access decisions consistently. It fits role-based access, route protection, session checks, and “ask another service before allowing this through” scenarios.
 

@@ -6,7 +6,7 @@ Response transformation library for nginx written in Gleam. Reusable plan-based 
 
 **The problem**: the upstream service gives you the wrong shape for the client. Maybe it includes internal fields, sensitive data, old field names, or details that are fine inside your system but not fine to expose publicly.
 
-**How it solves it**: this module lets nginx clean up the response on the way out. Instead of forcing the upstream service to serve every audience perfectly, you can mask, drop, rename, or conditionally change fields right before the client sees them.
+**How it solves it**: this module lets nginx clean up the response on the way out. Instead of forcing the upstream service to serve every audience perfectly, you can mask, drop, rename, or conditionally change fields right before the client sees them. You can make tiny adjustments or build a more tailored public response without forcing one rigid shape on every endpoint.
 
 **When you would use this**: use it when you need a safer or cleaner response without rewriting the upstream service first. It is a good fit for hiding internals, smoothing migrations, and shaping public output from messy backend responses.
 

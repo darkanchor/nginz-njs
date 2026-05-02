@@ -6,7 +6,7 @@ Two-level cache for nginx written in Gleam. Reusable cache semantics and a `ngx.
 
 **The problem**: some answers are expensive to fetch, but fetching them on every request makes everything slower and more fragile. At the same time, naive caching creates its own problems when stale data, lock contention, or request storms appear.
 
-**How it solves it**: this module gives you a reusable caching layer with a clear story about freshness, staleness, and shared state. It lets other modules say “save this for a while” or “serve the old answer briefly while a refresh happens” without each module reinventing the rules.
+**How it solves it**: this module gives you a reusable caching layer with a clear story about freshness, staleness, and shared state. It lets other modules say “save this for a while” or “serve the old answer briefly while a refresh happens” without each module reinventing the rules. You can use it as a simple speed-up or combine fresh, stale, and shared behavior in the balance that fits your traffic.
 
 **When you would use this**: use it when a module keeps asking the same question and the answer does not need to be recomputed every single time. It is especially helpful for external decisions, runtime flags, sessions, and any lookup where speed matters more than perfect immediacy.
 
