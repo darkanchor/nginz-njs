@@ -1,7 +1,30 @@
 import { spawnSync } from "bun";
-import { existsSync, copyFileSync, readdirSync, appendFileSync } from "fs";
+import { existsSync, copyFileSync, readdirSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
 import { readMetadata, checkNativeDeps } from "./metadata.js";
+
+// Returns the mtime (ms) of the newest file under `dir`, recursively.
+function newestMtime(dir) {
+  let newest = 0;
+  function walk(d) {
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else newest = Math.max(newest, statSync(p).mtimeMs);
+    }
+  }
+  if (existsSync(dir)) walk(dir);
+  return newest;
+}
+
+// True when the bundle is newer than gleam.toml and every file in src/.
+function isBundleFresh(moduleDir, distDir) {
+  const bundle = join(distDir, "njs", "app.js");
+  if (!existsSync(bundle)) return false;
+  const bundleMtime = statSync(bundle).mtimeMs;
+  if (statSync(join(moduleDir, "gleam.toml")).mtimeMs > bundleMtime) return false;
+  return newestMtime(join(moduleDir, "src")) <= bundleMtime;
+}
 
 const ROOT = import.meta.dir.replace(/\/scripts$/, "");
 const MODULES_DIR = join(ROOT, "modules");
@@ -17,6 +40,9 @@ function getModules(filter) {
 async function buildModule(dirName) {
   const moduleDir = join(MODULES_DIR, dirName);
   const distDir = join(DIST_DIR, dirName);
+
+  if (isBundleFresh(moduleDir, distDir)) return;
+
   const meta = readMetadata(moduleDir);
   const pkgName = meta.name;
 
