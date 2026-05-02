@@ -11,7 +11,8 @@
     "test:native":  "find . -path './modules/*/tests/**/do.test.js' | xargs bun test",
     "test":         "bun scripts/test.js && find . -path './modules/*/tests/basic/do.test.js' | xargs bun test",
     "deploy":       "bun scripts/deploy.js",
-    "clean":        "rm -rf dist modules/*/build modules/*/manifest.toml"
+    "clean":        "rm -rf dist modules/*/build modules/*/manifest.toml",
+    "njs-issues":   "bun scripts/fetch-njs-issues.js"
   },
   "devDependencies": {}
 }
