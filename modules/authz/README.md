@@ -189,6 +189,24 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - **No runtime policy reload.** Policy rules are compiled into the njs bundle. A policy change requires rebuilding and `nginx -s reload`. Hot-patching is not supported by the njs module system.
 - `jwt_check` / `enriched_jwt_check` depend on `$jwt_claim_*` variables set by the nginz native JWT module. Signature verification is the native layer's job.
 
+## Open upstream enabler: njs PR #1044
+
+There is an open upstream njs PR (`nginx/njs#1044`) proposing `js_access` plus request-body readers such as `readRequestText()`, `readRequestJSON()`, and `readRequestForm()`.
+
+If that PR lands substantially as proposed, it would be a **credible future enabler** for `authz`:
+
+- optional access-phase adapters instead of only `js_content`-phase adapters
+- pre-content body-aware authorization rules for JSON requests
+- pre-content form-aware gates for classic login / CSRF-style flows
+- fewer nginx workarounds when the policy decision really belongs before proxying
+
+Important guardrails:
+
+- this is **not available in this repo today**
+- the PR is still open and may change before merge
+- unresolved upstream review items around multipart parsing, docs, and tests mean we should not design current handlers around it yet
+- it does **not** erase the `ratelimit_policy` lesson about native ACCESS-phase deny-path state and `error_page` redirects; `js_access` would strengthen scripted policy, not magically fix native context loss
+
 ## Phased implementation plan
 
 ### Phase 1 — strengthen the pure policy language ✓
@@ -225,6 +243,15 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - [x] `cached_remote_check` handler wiring cache + OPA + Bearer token extraction
 - [ ] reusable RBAC recipe documentation (path+method+role policy tree)
 - [ ] document optional jwt module wiring end-to-end
+
+### Phase 5 — optional access-phase adapters (future, upstream-dependent)
+
+Goal: if upstream njs lands `js_access` and request-body readers, add access-phase adapters without changing the core policy DSL.
+
+- [ ] optional `js_access` adapters for pre-content authz decisions
+- [ ] body-aware policy adapters for JSON payloads when access-phase body reads are available upstream
+- [ ] form-aware policy adapters for login / CSRF gates when upstream `readRequestForm()` stabilizes
+- [ ] native integration coverage proving phase behavior before claiming these paths as supported
 
 ## TDD plan
 

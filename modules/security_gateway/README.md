@@ -35,6 +35,8 @@ This merge is not permission to overclaim native-signal composition. The phase l
 - treat WAF / ratelimit composition carefully and only document what is phase-safe
 - prefer explicit proof via native integration tests before claiming a new security signal is part of the reusable policy story
 
+The open njs PR #1044 (`js_access` + request body/form reads) may make the eventual merge into `authz` cleaner by allowing more scripted policy to run before content generation. It does **not** justify reviving `security_gateway` as a standalone package.
+
 ## Outcome for the roadmap
 
 `security_gateway` is removed as an independent package. Its useful work is now tracked as part of Milestone 2’s `authz` extension track.

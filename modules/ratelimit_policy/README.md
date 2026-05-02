@@ -48,3 +48,5 @@ The native ratelimit decision can disappear across `error_page 429 = @name;` red
 `ratelimit_policy` is removed from the Milestone 2 package list.
 
 The general lesson is broader than ratelimiting itself: **a native variable is not a sufficient reason to mint a standalone scripted package.** A package must first prove that its reusable Gleam library surface survives nginx phase realities.
+
+The open njs PR #1044 (`js_access` + request body/form reads) does not change this conclusion. It may improve future scripted access-phase policy in modules like `authz`, but it does not by itself fix native ratelimit deny-path context loss across `error_page` redirects.

@@ -322,6 +322,10 @@ Absorb the real value from `security_gateway` and `oidc_bridge` into `authz`:
 
 The principle is simple: keep one policy DSL (`all_of` / `any_of` / `not_`), not two.
 
+**Open upstream enabler:** nginx/njs PR #1044 (`js_access` + request body/form readers) is a credible future uplift for this track if it lands substantially as proposed. It would let `authz` add optional pre-content adapters for access-phase policy, body-aware checks, and form-aware gates without routing everything through `js_content` or `auth_request` workarounds.
+
+This is **not current capability** and it does **not** reopen the package decisions above. Even if PR #1044 lands, it does not by itself reverse the `ratelimit_policy` abort, the merge of `security_gateway` / `oidc_bridge` into `authz`, or the `health_gateway` deferral. It is an enabler for existing foundations, not a reason to recreate the old seven-package Milestone 2 split.
+
 #### Track B — extend `workflow` with resilience primitives
 
 Absorb the real value from `circuit_breaker_policy`:

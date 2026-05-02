@@ -35,6 +35,8 @@ Those are real tasks, but each one points naturally to an existing module bounda
 
 This demotion also prevents the package from drifting into too many jobs at once. OIDC flow handling remains native. Token refresh, session lifecycle, and policy consumption should stay with the modules that already own those concerns.
 
+The open njs PR #1044 (`js_access` + request body/form reads) may eventually simplify how OIDC-derived identity is consumed inside `authz`, especially for pre-content redirect or gate flows. It is only a future enabler for the merge path, not a reason to restore `oidc_bridge` as a standalone package.
+
 ## Outcome for the roadmap
 
 `oidc_bridge` is removed as an independent package. Its surviving work is now tracked inside the existing foundation modules that actually consume the identity information.
