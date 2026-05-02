@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "format":       "bun scripts/format.js",
+    "update":       "bun scripts/update.js",
+    "update:module": "bun scripts/update.js",
     "build":        "bun scripts/build.js",
     "build:module": "bun scripts/build.js",
     "test:unit":    "bun scripts/test.js",
