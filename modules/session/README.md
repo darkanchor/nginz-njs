@@ -2,6 +2,14 @@
 
 Session-state library for nginx written in Gleam. Cookie modeling, session lifecycle policy, and an `ngx.shared`-backed store adapter that other modules can compose for identity and targeting, without embedding session issuance logic in each consumer.
 
+## Use Case
+
+**The problem**: HTTP forgets everything between requests, but your product cannot. Once someone logs in, or once you assign them to a rollout path, you need later requests to remember who they are and what state they already carry.
+
+**How it solves it**: this module gives nginx a clear session lifecycle instead of leaving each feature to invent its own cookie and storage rules. One place starts the session, one place verifies it, and other modules can build on that shared identity instead of duplicating the same machinery.
+
+**When you would use this**: use it when requests need continuity. That could mean a normal login session, a sticky rollout assignment, or simply giving downstream policy and feature logic a stable notion of “this is the same user as before.”
+
 ## Roadmap position
 
 `session` is a Tier-2 module in `ROADMAP.md`. The core store adapter uses the njs built-in `ngx.shared` dict via `mlcache/shared`. The optional `start_oidc` handler additionally depends on the native `oidc` module and prefers a bridged `$session_oidc_sub` value, while falling back to the native `$oidc_claim_sub` in OIDC-gated content handlers.

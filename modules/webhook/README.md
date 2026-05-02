@@ -2,6 +2,14 @@
 
 Webhook signing and callback-verification for nginx written in Gleam. Composes `http_client` for outbound delivery and njs Web Crypto for HMAC signing/verification.
 
+## Use Case
+
+**The problem**: webhook integrations look simple until you need to trust them. Outbound calls need signing and retry behavior. Inbound callbacks need signature verification so you know the sender is real and the payload was not tampered with.
+
+**How it solves it**: this module gives you one consistent place to handle both sides of that exchange. It can sign what you send, verify what you receive, and keep the transport details separate from the business event itself.
+
+**When you would use this**: use it when nginx is sending signed events to another system, or when nginx is the receiver for signed callbacks from vendors and internal services. It is for the moment when “just POST some JSON” is no longer good enough.
+
 ## Roadmap position
 
 `webhook` is a Tier-2 module in `ROADMAP.md`. It has no native blocker because HMAC and related cryptographic primitives live in njs Web Crypto, while the scripted layer owns vendor-specific delivery and verification semantics.

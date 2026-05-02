@@ -2,6 +2,14 @@
 
 Distributed tracing glue for the native `requestid` module. The pure tracing layer reads `$ngz_request_id`, propagates headers to upstreams, and emits structured trace logs in Gleam.
 
+## Use Case
+
+**The problem**: when a request touches several layers, debugging becomes guesswork. You know something was slow or failed, but you cannot easily follow that one request across nginx, upstream services, and logs.
+
+**How it solves it**: this module gives each request a trace identity that travels with it. That makes it much easier to connect the pieces later, so one confusing incident becomes one readable story instead of five unrelated log lines.
+
+**When you would use this**: use it when reliability and debugging matter enough that “look through the logs and hope” is no longer acceptable. It is for the moment when you want to see a request’s journey, not just its final outcome.
+
 ## Roadmap position
 
 `request_tracing` is the **only standalone package that survives the Milestone 2 reevaluation** in `ROADMAP.md`. It depends on the native nginz `requestid` module and composes with `workflow`, `http_client`, `metrics`, and `session`.

@@ -4,6 +4,14 @@
 
 **Deferred. Not part of the near-term standalone Milestone 2 package set.**
 
+## Use Case
+
+**The problem**: sometimes “is this backend healthy?” is not enough. Real readiness decisions can depend on several signals at once, such as backend health, rollout state, policy context, or scripted logic that does not fit into one native variable.
+
+**How it would solve it**: this module is meant to combine several health signals into one answer that nginx can act on. The idea is useful when a simple yes-or-no backend check stops matching the real operational picture.
+
+**When you would use this**: not yet, and that honesty matters. Today the native health surface already covers the common cases well. This module becomes worth reviving only when you truly need multi-source health decisions instead of a thin wrapper around what nginx already knows.
+
 The review conclusion is not that `health_gateway` is impossible. It is that the current package is premature. Native `healthcheck` already exposes readiness, liveness, and backend-count facts directly, so a scripted package only becomes justified when we need aggregation or policy that the native surface cannot already express cleanly.
 
 ## Why it was deferred

@@ -2,6 +2,14 @@
 
 Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines for nginx. Parallel fan-out and sequential chaining, built on promises, fully composable.
 
+## Use Case
+
+**The problem**: one incoming request often depends on several other systems. You may need to check auth, load a profile, fetch feature data, and then combine the answers before you can respond.
+
+**How it solves it**: this module treats that multi-step flow as something you can describe clearly instead of improvising it inside one big handler. It lets you run steps in parallel, keep the order explicit when order matters, and decide what should happen when one piece fails.
+
+**When you would use this**: use it when nginx is acting like a coordinator in front of other services. It is especially useful for enrichment, fan-out APIs, fallback behavior, and any request path where “call A, B, maybe C, then merge the result” is the real job.
+
 ## Design goals
 
 - A `Step` is just `fn(HTTPRequest) -> Promise(StepResult)` — steps compose, map, and filter like any other values

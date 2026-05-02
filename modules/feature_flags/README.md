@@ -2,6 +2,14 @@
 
 Feature flag evaluation with stable bucketing for A/B routing in nginx. Pure hash-based bucketing, no external process, deterministic per identity.
 
+## Use Case
+
+**The problem**: shipping a feature to everyone at once is risky. You want a safer way to turn things on gradually, test ideas on a subset of users, and keep the same person on the same experience every time.
+
+**How it solves it**: this module makes rollout decisions directly inside nginx in a predictable way. You can start small, grow the rollout over time, and keep the targeting logic understandable instead of relying on ad-hoc percentages scattered through config.
+
+**When you would use this**: use it for dark launches, canary releases, A/B tests, staged migrations, or any moment where the question is not “is this feature built?” but “who should see it right now?”
+
 ## Design goals
 
 - Bucketing is a pure function of the targeting domain plus identifier string — the same key type and identifier always map to the same 0–99 bucket, no state required

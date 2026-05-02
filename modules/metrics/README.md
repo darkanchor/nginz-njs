@@ -2,6 +2,14 @@
 
 Reusable metrics modeling and StatsD/DogStatsD line rendering for nginx written in Gleam. Provides a shared instrumentation surface that other modules emit into, rather than each module formatting protocol lines on its own.
 
+## Use Case
+
+**The problem**: every module wants to report what it is doing, but if each one invents its own metric names, tags, and output format, the result is messy dashboards and operational confusion.
+
+**How it solves it**: this module gives the rest of the repo one shared way to describe and render metrics. That means the interesting part stays the signal itself, not the repeated string-formatting work or endless small inconsistencies between modules.
+
+**When you would use this**: use it when you want modules to speak the same operational language. It matters most when several pieces of the system need to be observed together and you do not want each one to feel like it came from a different team.
+
 ## Roadmap position
 
 `metrics` is a Tier-2 module in `ROADMAP.md`. It has no native blocker and belongs in the scripted layer because protocol serialization and log-phase event shaping are pure string/data tasks rather than performance-critical native primitives.
