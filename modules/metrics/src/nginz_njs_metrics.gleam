@@ -92,11 +92,10 @@ fn describe_metric(r: HTTPRequest) -> Nil {
 ///
 /// Example: /emit-helper?name=http_requests&pattern=increment&tags=route:api,status:200
 fn emit_helper(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let name = arg_string(vars, "name", "unknown")
-  let pattern = arg_string(vars, "pattern", "increment")
-  let value = arg_int(vars, "value", 1)
-  let tags = parse_tags(arg_string(vars, "tags", ""))
+  let name = arg_string(r, "name", "unknown")
+  let pattern = arg_string(r, "pattern", "increment")
+  let value = arg_int(r, "value", 1)
+  let tags = parse_tags(arg_string(r, "tags", ""))
 
   let metric = case pattern {
     "counter" -> helpers.counter(name, value, tags)
@@ -117,16 +116,16 @@ fn emit_helper(r: HTTPRequest) -> Nil {
 
 // --- Query param helpers ---
 
-fn arg_string(vars: JsObject, key: String, default: String) -> String {
-  case ngx.get(vars, "arg_" <> key) {
-    Ok(v) -> ngx.to_string(v)
+fn arg_string(r: HTTPRequest, key: String, default: String) -> String {
+  case http.get_variable(r, "arg_" <> key) {
+    Ok(v) -> v
     Error(_) -> default
   }
 }
 
-fn arg_int(vars: JsObject, key: String, default: Int) -> Int {
-  case ngx.get(vars, "arg_" <> key) {
-    Ok(v) -> result.unwrap(int.parse(ngx.to_string(v)), default)
+fn arg_int(r: HTTPRequest, key: String, default: Int) -> Int {
+  case http.get_variable(r, "arg_" <> key) {
+    Ok(v) -> result.unwrap(int.parse(v), default)
     Error(_) -> default
   }
 }
@@ -160,17 +159,16 @@ fn parse_tags(raw: String) -> List(line.Tag) {
 fn read_metric_from_args(
   r: HTTPRequest,
 ) -> Result(line.Metric, line.MetricError) {
-  let vars = http.get_variables(r)
-  let name = arg_string(vars, "name", "")
-  let value = arg_int(vars, "value", 0)
-  let metric_type = parse_metric_type(arg_string(vars, "type", "c"))
-  let namespace = arg_string(vars, "ns", "nginz")
-  let rate_str = arg_string(vars, "rate", "1.0")
+  let name = arg_string(r, "name", "")
+  let value = arg_int(r, "value", 0)
+  let metric_type = parse_metric_type(arg_string(r, "type", "c"))
+  let namespace = arg_string(r, "ns", "nginz")
+  let rate_str = arg_string(r, "rate", "1.0")
   let rate = case float.parse(rate_str) {
     Ok(f) -> f
     Error(_) -> 1.0
   }
-  let tags = parse_tags(arg_string(vars, "tags", ""))
+  let tags = parse_tags(arg_string(r, "tags", ""))
 
   let metric =
     line.Metric(

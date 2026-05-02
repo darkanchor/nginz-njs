@@ -21,9 +21,8 @@ fn describe(r: HTTPRequest) -> Nil {
 /// Generates a random UUID-backed SHA-256 session ID.
 /// Sets Set-Cookie on the response and returns 204.
 fn start(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   case dict_name {
@@ -32,16 +31,16 @@ fn start(r: HTTPRequest) -> Promise(Nil) {
       promise.resolve(Nil)
     }
     dict -> {
-      let ttl_s = case ngx.get(vars, "session_ttl") {
+      let ttl_s = case http.get_variable(r, "session_ttl") {
         Ok(v) ->
-          case int.parse(ngx.to_string(v)) {
+          case int.parse(v) {
             Ok(n) -> n
             Error(_) -> 3600
           }
         Error(_) -> 3600
       }
-      let subject = case ngx.get(vars, "session_subject") {
-        Ok(v) -> ngx.to_string(v)
+      let subject = case http.get_variable(r, "session_subject") {
+        Ok(v) -> v
         Error(_) -> http.remote_address(r)
       }
       let descriptor = model.default_descriptor()
@@ -73,9 +72,8 @@ fn generate_session_id(r: HTTPRequest) -> Promise(String) {
 /// Returns 204 + X-Session-Subject on success, 401 when the session is absent
 /// or expired. Designed for use with nginx auth_request.
 fn verify(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let descriptor = model.default_descriptor()
@@ -103,9 +101,8 @@ fn verify(r: HTTPRequest) -> Nil {
 /// Invalidate the session identified by the incoming cookie and clear it on
 /// the client. Always returns 204 regardless of whether a session existed.
 fn end_session(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let descriptor = model.default_descriptor()
@@ -136,9 +133,8 @@ fn end_session(r: HTTPRequest) -> Nil {
 /// Read the sticky canary assignment for the current session.
 /// Returns "1" (canary) or "0" (stable), or 404 when no assignment is stored.
 fn get_canary(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let descriptor = model.default_descriptor()
@@ -167,9 +163,8 @@ fn get_canary(r: HTTPRequest) -> Nil {
 /// Normalizes the subject to "oidc:{sub}", stores it, sets Set-Cookie; returns 204.
 /// Returns 401 when the OIDC module provides an empty subject.
 fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   case dict_name {
@@ -178,29 +173,28 @@ fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
       promise.resolve(Nil)
     }
     dict -> {
-      let ttl_s = case ngx.get(vars, "session_ttl") {
+      let ttl_s = case http.get_variable(r, "session_ttl") {
         Ok(v) ->
-          case int.parse(ngx.to_string(v)) {
+          case int.parse(v) {
             Ok(n) -> n
             Error(_) -> 3600
           }
         Error(_) -> 3600
       }
-      let raw_sub = case ngx.get(vars, "session_oidc_sub") {
-        Ok(v) -> {
-          let bridged = ngx.to_string(v)
+      let raw_sub = case http.get_variable(r, "session_oidc_sub") {
+        Ok(bridged) -> {
           case bridged {
             "" ->
-              case ngx.get(vars, "oidc_claim_sub") {
-                Ok(native) -> ngx.to_string(native)
+              case http.get_variable(r, "oidc_claim_sub") {
+                Ok(native) -> native
                 Error(_) -> ""
               }
             _ -> bridged
           }
         }
         Error(_) ->
-          case ngx.get(vars, "oidc_claim_sub") {
-            Ok(v) -> ngx.to_string(v)
+          case http.get_variable(r, "oidc_claim_sub") {
+            Ok(v) -> v
             Error(_) -> ""
           }
       }
@@ -230,9 +224,8 @@ fn start_oidc(r: HTTPRequest) -> Promise(Nil) {
 /// Persist a sticky canary assignment for the current session.
 /// Reads $session_dict, $session_canary (must be "1" or "0"), $session_ttl from nginx vars.
 fn set_canary(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let descriptor = model.default_descriptor()
@@ -245,16 +238,16 @@ fn set_canary(r: HTTPRequest) -> Nil {
           case dict_name {
             "" -> http.return_code(r, 500)
             dict -> {
-              let ttl_s = case ngx.get(vars, "session_ttl") {
+              let ttl_s = case http.get_variable(r, "session_ttl") {
                 Ok(v) ->
-                  case int.parse(ngx.to_string(v)) {
+                  case int.parse(v) {
                     Ok(n) -> n
                     Error(_) -> 3600
                   }
                 Error(_) -> 3600
               }
-              let canary_raw = case ngx.get(vars, "session_canary") {
-                Ok(v) -> ngx.to_string(v)
+              let canary_raw = case http.get_variable(r, "session_canary") {
+                Ok(v) -> v
                 Error(_) -> ""
               }
               case assignment.parse_canary_input(canary_raw) {

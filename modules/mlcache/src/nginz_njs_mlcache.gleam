@@ -11,18 +11,17 @@ fn describe(r: HTTPRequest) -> Nil {
 }
 
 fn put_entry(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let key = string_var(vars, "arg_key", "")
+  let key = string_var(r, "arg_key", "")
   case key {
     "" -> http.return_text(r, 400, "key required")
     _ -> {
-      let value = string_var(vars, "arg_value", "")
+      let value = string_var(r, "arg_value", "")
       let config =
         model.CacheConfig(
           backend: model.SharedDict,
           refresh_policy: model.RefreshOnMiss,
-          ttl_seconds: int_var(vars, "arg_ttl", 60),
-          stale_ttl_seconds: int_var(vars, "arg_stale", 0),
+          ttl_seconds: int_var(r, "arg_ttl", 60),
+          stale_ttl_seconds: int_var(r, "arg_stale", 0),
         )
       shared.put("cache", key, value, config)
       http.return_text(r, 200, "ok")
@@ -31,24 +30,22 @@ fn put_entry(r: HTTPRequest) -> Nil {
 }
 
 fn get_entry(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let key = string_var(vars, "arg_key", "")
+  let key = string_var(r, "arg_key", "")
   case key {
     "" -> http.return_text(r, 400, "key required")
     _ -> {
-      let result = shared.get("cache", key, int_var(vars, "arg_stale", 0))
+      let result = shared.get("cache", key, int_var(r, "arg_stale", 0))
       http.return_text(r, 200, describe_lookup(result))
     }
   }
 }
 
 fn try_lock_entry(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let key = string_var(vars, "arg_key", "")
+  let key = string_var(r, "arg_key", "")
   case key {
     "" -> http.return_text(r, 400, "key required")
     _ ->
-      case shared.try_lock("cache", key, int_var(vars, "arg_ttl_ms", 1000)) {
+      case shared.try_lock("cache", key, int_var(r, "arg_ttl_ms", 1000)) {
         True -> http.return_text(r, 200, "1")
         False -> http.return_text(r, 200, "0")
       }
@@ -56,8 +53,7 @@ fn try_lock_entry(r: HTTPRequest) -> Nil {
 }
 
 fn release_lock_entry(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let key = string_var(vars, "arg_key", "")
+  let key = string_var(r, "arg_key", "")
   case key {
     "" -> http.return_text(r, 400, "key required")
     _ -> {
@@ -75,17 +71,17 @@ fn describe_lookup(result: model.LookupResult) -> String {
   }
 }
 
-fn string_var(vars: JsObject, key: String, default: String) -> String {
-  case ngx.get(vars, key) {
-    Ok(value) -> ngx.to_string(value)
+fn string_var(r: HTTPRequest, key: String, default: String) -> String {
+  case http.get_variable(r, key) {
+    Ok(value) -> value
     Error(_) -> default
   }
 }
 
-fn int_var(vars: JsObject, key: String, default: Int) -> Int {
-  case ngx.get(vars, key) {
+fn int_var(r: HTTPRequest, key: String, default: Int) -> Int {
+  case http.get_variable(r, key) {
     Ok(value) ->
-      case int.parse(ngx.to_string(value)) {
+      case int.parse(value) {
         Ok(parsed) -> parsed
         Error(_) -> default
       }

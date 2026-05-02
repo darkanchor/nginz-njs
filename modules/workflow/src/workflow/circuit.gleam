@@ -12,7 +12,6 @@
 
 import gleam/javascript/promise.{type Promise}
 import njs/http.{type HTTPRequest}
-import njs/ngx
 import workflow/pipeline.{type Step, type StepResult, Failed}
 
 // --- Types ---
@@ -29,10 +28,9 @@ pub type CircuitState {
 /// Returns `Closed` when the variable is absent or unrecognised.
 ///
 pub fn read_state(r: HTTPRequest) -> CircuitState {
-  let vars = http.get_variables(r)
-  case ngx.get(vars, "ngz_circuit_state") {
+  case http.get_variable(r, "ngz_circuit_state") {
     Ok(val) ->
-      case ngx.to_string(val) {
+      case val {
         "open" -> Open
         "half_open" -> HalfOpen
         _ -> Closed

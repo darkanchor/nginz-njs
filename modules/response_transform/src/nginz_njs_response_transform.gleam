@@ -24,10 +24,9 @@ fn transform(r: HTTPRequest, data: String, flags: JsObject) -> Nil {
 }
 
 fn transform_with_status(r: HTTPRequest, data: String, flags: JsObject) -> Nil {
-  let vars = http.get_variables(r)
-  let status = case ngx.get(vars, "status") {
+  let status = case http.get_variable(r, "status") {
     Ok(v) ->
-      case int.parse(ngx.to_string(v)) {
+      case int.parse(v) {
         Ok(n) -> n
         Error(_) -> -1
       }

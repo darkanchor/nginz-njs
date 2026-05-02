@@ -52,24 +52,22 @@ fn traced_with_session(r: HTTPRequest) -> Nil {
 // --- Internal helpers ---
 
 fn read_context(r: HTTPRequest) -> TraceContext {
-  let vars = http.get_variables(r)
   // Prefer the native requestid module's $ngz_request_id.
   // Fall back to nginx built-in $request_id, then "unknown".
-  let id = case ngx.get(vars, "ngz_request_id") {
-    Ok(v) -> {
-      let s = ngx.to_string(v)
+  let id = case http.get_variable(r, "ngz_request_id") {
+    Ok(s) -> {
       case s {
         "" ->
-          case ngx.get(vars, "request_id") {
-            Ok(v2) -> ngx.to_string(v2)
+          case http.get_variable(r, "request_id") {
+            Ok(v2) -> v2
             Error(_) -> "unknown"
           }
         _ -> s
       }
     }
     Error(_) ->
-      case ngx.get(vars, "request_id") {
-        Ok(v2) -> ngx.to_string(v2)
+      case http.get_variable(r, "request_id") {
+        Ok(v2) -> v2
         Error(_) -> "unknown"
       }
   }

@@ -39,9 +39,8 @@ fn check(r: HTTPRequest) -> Nil {
 }
 
 fn jwt_check(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
   let ctx =
-    Context(..context_from_request(r), claims: claims.from_vars(vars, ["role"]))
+    Context(..context_from_request(r), claims: claims.from_request(r, ["role"]))
   let rules = [
     policy.any_of([
       policy.has_claim("role", "admin"),
@@ -58,9 +57,8 @@ fn jwt_check(r: HTTPRequest) -> Nil {
 }
 
 fn remote_check(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
-  let endpoint = case ngx.get(vars, "authz_opa_url") {
-    Ok(v) -> ngx.to_string(v)
+  let endpoint = case http.get_variable(r, "authz_opa_url") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let ctx = context_from_request(r)
@@ -101,14 +99,13 @@ fn apply_decision(
 /// keyed by a SHA-256 of the Bearer token. Reads $authz_cache_ttl (seconds,
 /// default 300) and $authz_opa_url from nginx variables.
 fn cached_remote_check(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
-  let endpoint = case ngx.get(vars, "authz_opa_url") {
-    Ok(v) -> ngx.to_string(v)
+  let endpoint = case http.get_variable(r, "authz_opa_url") {
+    Ok(v) -> v
     Error(_) -> ""
   }
-  let ttl = case ngx.get(vars, "authz_cache_ttl") {
+  let ttl = case http.get_variable(r, "authz_cache_ttl") {
     Ok(v) ->
-      case int.parse(ngx.to_string(v)) {
+      case int.parse(v) {
         Ok(n) -> n
         Error(_) -> 300
       }
@@ -152,11 +149,10 @@ fn enriched_check(r: HTTPRequest) -> Nil {
 /// Like jwt_check but also injects X-Authz-Status and X-Authz-<Claim> headers
 /// so upstreams receive the role without re-reading JWT variables.
 fn enriched_jwt_check(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
   let ctx =
     Context(
       ..context_from_request(r),
-      claims: claims.from_vars(vars, ["role", "sub"]),
+      claims: claims.from_request(r, ["role", "sub"]),
     )
   let rules = [
     policy.any_of([
@@ -178,9 +174,8 @@ fn enriched_jwt_check(r: HTTPRequest) -> Nil {
 
 /// Like remote_check but injects X-Authz-Status after the OPA decision.
 fn enriched_remote_check(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
-  let endpoint = case ngx.get(vars, "authz_opa_url") {
-    Ok(v) -> ngx.to_string(v)
+  let endpoint = case http.get_variable(r, "authz_opa_url") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let ctx = context_from_request(r)
@@ -193,9 +188,8 @@ fn enriched_remote_check(r: HTTPRequest) -> Promise(Nil) {
 /// Reads $session_dict from nginx variables. Designed for use with nginx
 /// auth_request — returns 204 + X-Session-Subject on success, 401 otherwise.
 fn session_gate(r: HTTPRequest) -> Nil {
-  let vars = http.get_variables(r)
-  let dict_name = case ngx.get(vars, "session_dict") {
-    Ok(v) -> ngx.to_string(v)
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   let descriptor = session_model.default_descriptor()

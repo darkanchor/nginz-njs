@@ -1,6 +1,5 @@
 import feature_flags/evaluation.{type Override, ForceOn, NoOverride}
 import njs/http.{type HTTPRequest}
-import njs/ngx
 
 /// Map a canary boolean to an Override.
 /// Canary requests become ForceOn; non-canary falls through to normal rollout.
@@ -24,9 +23,8 @@ pub fn annotate_decision(description: String, is_canary: Bool) -> String {
 /// Reads $ngz_canary set by the native canary module.
 /// Returns False when the module is not loaded or not configured.
 pub fn read_canary(r: HTTPRequest) -> Bool {
-  let vars = http.get_variables(r)
-  case ngx.get(vars, "ngz_canary") {
-    Ok(v) -> ngx.to_string(v) == "1"
+  case http.get_variable(r, "ngz_canary") {
+    Ok(v) -> v == "1"
     Error(_) -> False
   }
 }

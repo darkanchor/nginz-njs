@@ -66,9 +66,8 @@ fn custom_health(r: HTTPRequest) -> Nil {
 /// Read backend health from nginx variables. In a real deployment, this
 /// would parse JSON from subrequests to healthcheck endpoints.
 fn read_backends(r: HTTPRequest) -> List(BackendHealth) {
-  let vars = http.get_variables(r)
-  let backend_status = case ngx.get(vars, "health_backends") {
-    Ok(v) -> ngx.to_string(v)
+  let backend_status = case http.get_variable(r, "health_backends") {
+    Ok(v) -> v
     Error(_) -> ""
   }
   parse_backends(backend_status)

@@ -66,30 +66,22 @@ fn verify_demo(r: HTTPRequest) -> Promise(Nil) {
 /// Requires an upstream fixture at `/__fixture/upstream` or a real target.
 ///
 fn deliver_demo(r: HTTPRequest) -> Promise(Nil) {
-  let vars = http.get_variables(r)
   let config =
     spec.WebhookConfig(
       ..spec.demo_outbound(),
-      url: case ngx.get(vars, "webhook_demo_url") {
-        Ok(v) -> ngx.to_string(v)
+      url: case http.get_variable(r, "webhook_demo_url") {
+        Ok(v) -> v
         Error(_) -> spec.demo_outbound().url
       },
-      timeout_ms: case ngx.get(vars, "webhook_demo_timeout_ms") {
-        Ok(v) ->
-          result.unwrap(
-            int.parse(ngx.to_string(v)),
-            spec.demo_outbound().timeout_ms,
-          )
+      timeout_ms: case http.get_variable(r, "webhook_demo_timeout_ms") {
+        Ok(v) -> result.unwrap(int.parse(v), spec.demo_outbound().timeout_ms)
         Error(_) -> spec.demo_outbound().timeout_ms
       },
       retry_max_attempts: case
-        ngx.get(vars, "webhook_demo_retry_max_attempts")
+        http.get_variable(r, "webhook_demo_retry_max_attempts")
       {
         Ok(v) ->
-          result.unwrap(
-            int.parse(ngx.to_string(v)),
-            spec.demo_outbound().retry_max_attempts,
-          )
+          result.unwrap(int.parse(v), spec.demo_outbound().retry_max_attempts)
         Error(_) -> spec.demo_outbound().retry_max_attempts
       },
     )
