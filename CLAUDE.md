@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Gleam bindings to the njs runtime are provided by the [`ngs`](https://hex.pm/packages/ngs) package (local copy at `/home/kaiwu/Documents/cgit/ngs`).
 
+## Skills
+- Nginx is a subtle piece of software, it might take substantial effort to learn a hard fact when debug its core and native modules, as you learnt, append to an existing skill or create one
+
 ## Core design rule: modules are building blocks
 
 Every module in this repo has two distinct surfaces:
@@ -172,7 +175,7 @@ Gleam compiles to JS but `int.bitwise_exclusive_or` uses the gleam_stdlib helper
 
 ### Native vs scripted boundary
 
-Follow the nginz ROADMAP (`../nginz/ROADMAP.md`) and `../nginz/docs/design-native-vs-scripted.md`:
+Follow the nginz ROADMAP (`./submodules/nginz/ROADMAP.md`) and `./submodules/nginz/docs/design-native-vs-scripted.md`:
 - **Here**: policy rules, subrequest orchestration, JWT claim mapping, flag evaluation, response templating, webhook glue
 - **In nginz**: WAF engine, rate limit counters, shared-memory state, upstream balancer internals, TLS/ACME, brotli/zstd
 
