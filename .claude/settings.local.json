@@ -35,7 +35,8 @@
       "Bash(for m:*)",
       "Bash(do echo:*)",
       "Read(//home/kaiwu/Documents/gitea/nginz-njs/modules/**)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(KEEP_LOGS=1 bun test *)"
     ]
   }
 }

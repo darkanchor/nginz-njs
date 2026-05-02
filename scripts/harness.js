@@ -10,27 +10,37 @@ const TEST_PORT = 8888;
 
 export function ensureBuild(moduleNames) {
   // moduleNames is null (build all) or string[] (build specific modules)
-  const args = moduleNames && moduleNames.length > 0 ? moduleNames : [];
-
-  // Skip if all requested modules already have dist bundles
-  if (args.length > 0) {
-    const allBuilt = args.every((name) =>
-      existsSync(join(ROOT, "dist", name, "njs", "app.js"))
+  if (moduleNames && moduleNames.length > 0) {
+    // Selective: only invoke build.js for modules whose bundle is missing.
+    // build.js accepts exactly one module name, so call it once per module.
+    const missing = moduleNames.filter(
+      (name) => !existsSync(join(ROOT, "dist", name, "njs", "app.js"))
     );
-    if (allBuilt) return;
+    for (const name of missing) {
+      const r = spawnSync(["bun", "scripts/build.js", name], {
+        cwd: ROOT,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      if (r.exitCode !== 0) throw new Error(`build failed for ${name}`);
+    }
   } else {
-    // For "build all", check if at least one module is built (heuristic)
+    // All: skip only when every known module already has a bundle.
     const distDir = join(ROOT, "dist");
-    if (existsSync(distDir) && readdirSync(distDir).length > 0) return;
+    const modulesDir = join(ROOT, "modules");
+    if (existsSync(distDir) && existsSync(modulesDir)) {
+      const allBuilt = readdirSync(modulesDir).every((name) =>
+        existsSync(join(distDir, name, "njs", "app.js"))
+      );
+      if (allBuilt) return;
+    }
+    const r = spawnSync(["bun", "scripts/build.js"], {
+      cwd: ROOT,
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    if (r.exitCode !== 0) throw new Error("build failed");
   }
-
-  // Rebuild
-  const result = spawnSync(["bun", "scripts/build.js", ...args], {
-    cwd: ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  if (result.exitCode !== 0) throw new Error("build failed");
 }
 
 function deployBundle(prefix, moduleName, targetName = "app.js") {

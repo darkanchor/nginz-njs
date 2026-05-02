@@ -3,6 +3,7 @@ import gleam/list
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
+import workflow/circuit
 import workflow/merge
 import workflow/pipeline.{
   Failed, Fetched, fail_on_status, fetch_step, filter_ok, first_ok, map_body,
@@ -226,6 +227,63 @@ fn summary(r: HTTPRequest) -> Promise(Nil) {
   promise.resolve(Nil)
 }
 
+// --- Circuit state reader ---
+
+/// Read `$ngz_circuit_state` and return it as a plain-text response.
+/// Used by the circuit integration tests to observe state transitions.
+///
+fn circuit_state(r: HTTPRequest) -> Promise(Nil) {
+  let text = case circuit.read_state(r) {
+    circuit.Closed -> "closed"
+    circuit.Open -> "open"
+    circuit.HalfOpen -> "half_open"
+  }
+  http.return_text(r, 200, text)
+  promise.resolve(Nil)
+}
+
+/// Trip the circuit by calling a consistently-failing internal backend.
+/// Returns the upstream status so the log phase records failures.
+///
+fn circuit_trip(r: HTTPRequest) -> Promise(Nil) {
+  use result <- promise.await(subrequest_step("/internal/sick")(r))
+  case result {
+    Fetched(status, _) -> {
+      http.return_code(r, status)
+      promise.resolve(Nil)
+    }
+    Failed(_) -> {
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+  }
+}
+
+/// Probe handler with `allow_probe_when_half_open` wrapping.
+/// Pass `?fail=1` to simulate failure and trip the circuit.
+/// Without the param, uses the healthy backend through the circuit wrapper.
+///
+fn circuit_probe(r: HTTPRequest) -> Promise(Nil) {
+  let args = http.args(r)
+  let step = case ngx.get(args, "fail") {
+    Ok(_) -> subrequest_step("/internal/sick")
+    Error(Nil) ->
+      subrequest_step("/internal/healthy")
+      |> circuit.allow_probe_when_half_open(Failed("circuit-open"))
+  }
+  use result <- promise.await(step(r))
+  case result {
+    Fetched(status, body) -> {
+      http.return_text(r, status, body)
+      promise.resolve(Nil)
+    }
+    Failed(_) -> {
+      http.return_code(r, 500)
+      promise.resolve(Nil)
+    }
+  }
+}
+
 // --- Exports ---
 
 pub fn exports() -> JsObject {
@@ -240,4 +298,7 @@ pub fn exports() -> JsObject {
   |> ngx.merge("first_ok_demo", first_ok_demo)
   |> ngx.merge("map_body_demo", map_body_demo)
   |> ngx.merge("summary", summary)
+  |> ngx.merge("circuit_state", circuit_state)
+  |> ngx.merge("circuit_trip", circuit_trip)
+  |> ngx.merge("circuit_probe", circuit_probe)
 }

@@ -3,6 +3,7 @@ import gleam/list
 import gleam/string
 import gleeunit
 import gleeunit/should
+import workflow/circuit
 import workflow/merge
 import workflow/pipeline
 
@@ -291,4 +292,38 @@ pub fn select_first_ok_uses_default_test() {
   let results = [pipeline.Failed("a"), pipeline.Failed("b")]
   merge.select_first_ok(results, pipeline.Fetched(200, "default"))
   |> should.equal(pipeline.Fetched(200, "default"))
+}
+
+// --- circuit: type checks ---
+
+pub fn circuit_state_variants_test() {
+  circuit.Closed |> should.equal(circuit.Closed)
+  circuit.Open |> should.equal(circuit.Open)
+  circuit.HalfOpen |> should.equal(circuit.HalfOpen)
+}
+
+pub fn skip_when_open_is_step_test() {
+  let step = fn(_r) { promise.resolve(pipeline.Fetched(200, "ok")) }
+  let _: pipeline.Step = circuit.skip_when_open(step, pipeline.Failed("open"))
+  Nil
+}
+
+pub fn allow_probe_when_half_open_is_step_test() {
+  let step = fn(_r) { promise.resolve(pipeline.Fetched(200, "ok")) }
+  let _: pipeline.Step =
+    circuit.allow_probe_when_half_open(step, pipeline.Failed("open"))
+  Nil
+}
+
+pub fn recover_when_open_is_step_test() {
+  let step = fn(_r) { promise.resolve(pipeline.Fetched(200, "ok")) }
+  let _: pipeline.Step =
+    circuit.recover_when_open(step, fn() { pipeline.Fetched(200, "fallback") })
+  Nil
+}
+
+pub fn suppress_retry_when_open_is_step_test() {
+  let step = fn(_r) { promise.resolve(pipeline.Failed("x")) }
+  let _: pipeline.Step = circuit.suppress_retry_when_open(step, 2)
+  Nil
 }

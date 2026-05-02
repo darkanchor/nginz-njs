@@ -7,9 +7,9 @@
     "build":        "bun scripts/build.js",
     "build:module": "bun scripts/build.js",
     "test:unit":    "bun scripts/test.js",
-    "test:int":     "find modules -path '*/tests/basic/do.test.js' | xargs bun test",
-    "test:native":  "find modules -path '*/tests/*/do.test.js' | xargs bun test",
-    "test":         "bun scripts/test.js && find modules -path '*/tests/basic/do.test.js' | xargs bun test",
+    "test:int":     "bun scripts/build.js && find modules -path '*/tests/basic/do.test.js' | xargs bun test",
+    "test:native":  "bun scripts/build.js && find modules -path '*/tests/*/do.test.js' | xargs bun test",
+    "test":         "bun scripts/test.js && bun scripts/build.js && find modules -path '*/tests/*/do.test.js' | xargs bun test",
     "deploy":       "bun scripts/deploy.js",
     "clean":        "rm -rf dist modules/*/build modules/*/manifest.toml",
     "gh-issue":    "bun scripts/gh-issue.js"

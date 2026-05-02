@@ -54,9 +54,9 @@ make                                   # zig build package -Doptimize=ReleaseSma
 bun run test:native                    # all scenarios including jwt, enrich, etc.
 ```
 
-### Both unit + basic integration
+### Everything
 ```bash
-bun run test                           # unit tests + basic integration tests (no native deps)
+bun run test                           # unit tests + all integration tests (basic + native scenarios)
 ```
 
 ### Clean
@@ -194,7 +194,12 @@ Follow the nginz ROADMAP (`./submodules/nginz/ROADMAP.md`) and `./submodules/ngi
 
 ### Module catalog and roadmap priority
 
-`ROADMAP.md` has the full scripted module roadmap. Module metadata (name, version, native deps) lives in each module's `gleam.toml` under `[metadata]`. Priority order:
+`ROADMAP.md` has the full scripted module roadmap. Module metadata (name, version, native deps) lives in each module's `gleam.toml` under `[metadata]`. Native nginz dependencies are declared as:
+```toml
+[metadata.native]
+nginz = ["circuit-breaker"]   # list of module names from submodules/nginz/zig-out/modules/
+```
+Priority order:
 1. `http_client` — `ngx.fetch()` wrapper (no native dependency, highest leverage)
 2. `workflow` — subrequest orchestration (scaffolded)
 3. `feature_flags` — stable bucketing (scaffolded)
