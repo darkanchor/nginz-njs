@@ -152,7 +152,7 @@ Goal: connect the pure metric model to concrete StatsD/DogStatsD line rendering 
 Goal: keep the metric model stable while making it easier for other modules and runtime tooling to move those values toward real sinks.
 
 - [ ] add batching or sink configuration once the event contract and module consumers are stable enough to support it cleanly
-- [ ] add composition examples for `workflow`, `webhook`, `request_tracing`, and `runtime_api`
+- [ ] add composition examples for `workflow`, `webhook`, `request_tracing`, and `control_api`
 - [ ] keep sink delivery and transport ownership separate from the pure metric/event model
 
 ## TDD plan

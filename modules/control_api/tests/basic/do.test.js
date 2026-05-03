@@ -7,10 +7,10 @@ import {
   TEST_URL,
 } from "../../../../scripts/harness.js";
 
-const MODULE = "runtime_api";
+const MODULE = "control_api";
 const CONF = join(import.meta.dir, "nginx.conf");
 
-describe("runtime_api — scaffold demo", () => {
+describe("control_api — scaffold demo", () => {
   beforeAll(async () => {
     await startNginx(CONF, MODULE);
   });
@@ -31,7 +31,7 @@ describe("runtime_api — scaffold demo", () => {
   test("health returns ok runtime status", async () => {
     const res = await fetch(`${TEST_URL}/runtime/health`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("ok runtime_api=ready");
+    expect(await res.text()).toBe("ok control_api=ready");
   });
 
   test("inspect_flag previews named flag", async () => {

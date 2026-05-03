@@ -1,7 +1,7 @@
-name = "nginz_njs_runtime_api"
+name = "nginz_njs_control_api"
 version = "0.1.0"
 target = "javascript"
-description = "Operator-facing runtime inspection and control surface for nginx written in Gleam"
+description = "Operator-facing control surface for nginx written in Gleam"
 
 licences = ["Apache-2.0"]
 gleam = ">= 1.14.0"

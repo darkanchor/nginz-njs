@@ -1,7 +1,7 @@
+import control_api/response
+import control_api/router
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
-import runtime_api/response
-import runtime_api/router
 
 fn describe(r: HTTPRequest) -> Nil {
   router.describe_routes()
@@ -9,7 +9,7 @@ fn describe(r: HTTPRequest) -> Nil {
 }
 
 fn health(r: HTTPRequest) -> Nil {
-  response.ok("runtime_api=ready")
+  response.ok("control_api=ready")
   |> http.return_text(r, 200, _)
 }
 

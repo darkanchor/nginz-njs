@@ -142,10 +142,10 @@ In other words: **`exports()` is the adapter layer, not the whole module design.
 | [`nginz_njs_metrics`](modules/metrics/README.md) | Reusable metrics modeling and StatsD/DogStatsD line rendering for cross-module instrumentation | library ready, transport next |
 | [`nginz_njs_request_tracing`](modules/request_tracing/README.md) | Distributed tracing glue: native request ID → trace context → propagation headers and structured trace rendering | milestone 2 pillar, wiring next |
 | [`nginz_njs_response_templating`](modules/response_templating/README.md) | Lightweight response generation and rendering from request/runtime facts; companion to response_transform rather than a replacement | milestone 3 foundation draft |
-| [`nginz_njs_runtime_api`](modules/runtime_api/README.md) | Operator-facing runtime inspection and control surface over flags, cache, session, and other scripted module state | milestone 3 control-plane draft |
+| [`nginz_njs_control_api`](modules/control_api/README.md) | Operator-facing control surface over flags, cache, session, tracing, and other scripted module state; the Milestone 3 capstone for a unified internal control API | milestone 3 capstone |
 | [`nginz_njs_health_gateway`](modules/health_gateway/README.md) | Deferred health aggregation package; revisit only when native `$health_*` and health endpoints stop being enough for real multi-source policy/aggregation needs | deferred by design |
 
-Current roadmap focus keeps Milestone 2 as the consolidation milestone that strengthened the foundations, then uses Milestone 3 to deepen composition and operability around those foundations. That means extending `authz`, `workflow`, `mlcache`, `request_tracing`, and related modules, while adding only two standalone Milestone 3 packages with real independent library value: `response_templating` and `runtime_api`. See [ROADMAP.md](ROADMAP.md) for the active track breakdown and implementation order.
+Current roadmap focus keeps Milestone 2 as the consolidation milestone that strengthened the foundations, then uses Milestone 3 to deepen composition and operability around those foundations. That means extending `authz`, `workflow`, `mlcache`, `request_tracing`, and related modules, while adding two standalone Milestone 3 packages with real independent library value: `response_templating` for response generation and `control_api` as the operator-facing capstone over the runtime-capable modules. See [ROADMAP.md](ROADMAP.md) for the active track breakdown and implementation order.
 
 ## Setup
 

@@ -121,7 +121,7 @@ Goal: support callback verification without collapsing all protocol behavior int
 
 ### Phase 5 — milestone 3 runtime and template composition
 
-- [ ] add examples where webhook delivery/verification status is exposed through `runtime_api` without duplicating webhook semantics there
+- [ ] add examples where webhook delivery/verification status is exposed through `control_api` without duplicating webhook semantics there
 - [ ] add payload generation examples that use `response_templating` for fresh callback or fixture bodies and `response_transform` for mutation of existing ones
 
 ## TDD plan

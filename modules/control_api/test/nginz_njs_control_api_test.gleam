@@ -1,9 +1,9 @@
+import control_api/model
+import control_api/response
+import control_api/router
 import gleam/list
 import gleeunit
 import gleeunit/should
-import runtime_api/model
-import runtime_api/response
-import runtime_api/router
 
 pub fn main() {
   gleeunit.main()
@@ -16,8 +16,8 @@ pub fn demo_endpoints_count_test() {
 }
 
 pub fn response_ok_test() {
-  response.ok("runtime_api=ready")
-  |> should.equal("ok runtime_api=ready")
+  response.ok("control_api=ready")
+  |> should.equal("ok control_api=ready")
 }
 
 pub fn route_description_contains_health_test() {

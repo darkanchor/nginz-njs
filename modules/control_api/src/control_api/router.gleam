@@ -1,6 +1,6 @@
+import control_api/model
 import gleam/list
 import gleam/string
-import runtime_api/model
 
 pub fn describe_routes() -> String {
   model.demo_endpoints()

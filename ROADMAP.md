@@ -414,11 +414,11 @@ Milestone 2 already gave us `response_transform`, which owns mutation of existin
 
 - `response_transform` continues to own masking, dropping, renaming, and conditional mutation of payloads that already exist
 - a new `response_templating` module should own lightweight response generation and rendering from request variables, session facts, and runtime data
-- `authz`, `workflow`, and `runtime_api` should compose these two surfaces rather than baking body logic into handlers directly
+- `authz`, `workflow`, and `control_api` should compose these two surfaces rather than baking body logic into handlers directly
 
 This is a real standalone addition because “render a response from structured template inputs” is a reusable library surface, not just a demo filter.
 
-### Track C — add an operator-facing runtime API over existing foundations
+### Track C — add an operator-facing runtime API capstone over existing foundations
 
 The repo now has useful runtime-capable surfaces spread across modules:
 
@@ -427,13 +427,14 @@ The repo now has useful runtime-capable surfaces spread across modules:
 - `mlcache` exposes runtime probes and lock behavior
 - `request_tracing` and `metrics` expose structured operational data
 
-Milestone 3 should add a reusable `runtime_api` library and adapter layer that:
+Milestone 3 should add a reusable `control_api` library and adapter layer that:
 
 - provides stable JSON/text responses over existing foundations
 - exposes runtime inspection and control surfaces without inventing a second policy/config system
 - serves as the first operator-facing capstone for the scripted platform
+- closes one of the clearest documented commercial gaps in **njs scope**, not Zig scope
 
-This should begin with the existing scripted surfaces first. Dynamic upstreams, native control-plane actions, and richer write paths stay gated until the native side is ready and the API contract is worth stabilizing.
+This should begin with the existing scripted surfaces first. Dynamic upstreams, native control-plane actions, and richer write paths stay gated until the native side is ready and the API contract is worth stabilizing. The crucial point is that this is not just another helper module: it is the ecosystem surface that makes the rest of the runtime-capable modules feel like one operational product.
 
 ### Track D — make cache and workflow composition more product-shaped
 
@@ -467,7 +468,7 @@ Only two standalone additions are justified at this stage:
 | Module | Why it stands on its own |
 |---|---|
 | `response_templating` | reusable rendering/building-block surface for generated responses, distinct from payload mutation |
-| `runtime_api` | reusable operator/control surface over existing scripted modules, distinct from any one module’s demo handlers |
+| `control_api` | reusable operator/control surface over existing scripted modules; Milestone 3 capstone and the strongest documented njs-side commercial-gap target |
 
 ### Explicit non-goals for Milestone 3
 
@@ -491,7 +492,7 @@ Only two standalone additions are justified at this stage:
 1. **Write the milestone and module-boundary docs first** — lock the intended ownership lines before adding new scaffolds
 2. **Extend `authz`** — finish the strongest remaining policy/identity/security surface
 3. **Scaffold `response_templating`** — add the new rendering surface cleanly and keep it separate from transform logic
-4. **Scaffold `runtime_api`** — add the operator-facing library/adapter surface over current runtime-capable modules
+4. **Promote and deepen `control_api`** — turn the scaffold into the operator-facing library/adapter surface over current runtime-capable modules
 5. **Deepen `workflow` + `mlcache` + `request_tracing` composition** — wire the existing reusable libraries together
 6. **Revisit gated follow-ons only after native prerequisites land**
 
@@ -500,4 +501,5 @@ Only two standalone additions are justified at this stage:
 - it keeps building around the modules that already proved their value
 - it adds new standalone modules only where the library surface is genuinely reusable
 - it makes the scripted layer feel more product-like without violating the native/scripted boundary
+- it gives Milestone 3 one clear capstone surface with strong ecosystem leverage: `control_api`
 - it leaves native-dependent ideas visible, but correctly gated

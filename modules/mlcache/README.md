@@ -168,8 +168,8 @@ All three downstream modules now consume mlcache directly — see the consumers 
 
 Goal: make `mlcache` easier to compose from workflow and operator-facing tooling without turning it into an application-specific cache engine.
 
-- [ ] document and test reusable read-through / stale-while-refresh recipes for `workflow`, `authz`, and `runtime_api`
-- [ ] add helper surfaces for cache inspection/invalidation that `runtime_api` can expose without embedding domain-specific key meaning into `mlcache`
+- [ ] document and test reusable read-through / stale-while-refresh recipes for `workflow`, `authz`, and `control_api`
+- [ ] add helper surfaces for cache inspection/invalidation that `control_api` can expose without embedding domain-specific key meaning into `mlcache`
 - [ ] add examples for cache-tag or selective purge orchestration only where a concrete scripted consumer exists
 - [ ] keep consumer-owned keying and invalidation semantics explicit so `mlcache` stays a cache primitive, not a policy package
 
