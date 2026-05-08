@@ -20,10 +20,10 @@ describe("response_templating — scaffold demo", () => {
     cleanupRuntime(MODULE);
   });
 
-  test("describe returns stable template summary", async () => {
+  test("describe returns registry summary", async () => {
     const res = await fetch(`${TEST_URL}/describe`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("demo placeholders=2");
+    expect(await res.text()).toBe("registry count=2");
   });
 
   test("render returns demo response", async () => {

@@ -2,11 +2,14 @@
 //// $ngz_request_id and propagates it to upstream headers, records spans,
 //// and emits structured trace logs.
 
+import gleam/javascript/promise.{type Promise}
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 import request_tracing/emit
 import request_tracing/model.{type TraceContext}
 import request_tracing/propagate
+import request_tracing/record
+import workflow/pipeline
 
 /// Traced handler. Reads $ngz_request_id, injects X-Request-ID and
 /// X-Trace-ID into response headers, returns 204.
@@ -84,9 +87,41 @@ fn set_headers(r: HTTPRequest, pairs: List(#(String, String))) -> Nil {
   }
 }
 
+/// Traced workflow handler. Runs two subrequest steps in parallel, records
+/// each as a span, and emits the full trace as a JSON log line.
+/// Demonstrates the compose pattern: TraceContext + workflow pipeline + span recording.
+fn traced_workflow(r: HTTPRequest) -> Promise(Nil) {
+  let ctx = read_context(r)
+  let steps = [
+    pipeline.subrequest_step("/health"),
+    pipeline.subrequest_step("/health"),
+  ]
+  let start = ngx.now()
+  use results <- promise.await(pipeline.run_parallel(r, steps))
+  let now = ngx.now()
+  let ctx =
+    record.record_step_results(ctx, start, now, [
+      #("step_1", case results {
+        [r1, ..] -> r1
+        [] -> pipeline.Failed("no result")
+      }),
+      #("step_2", case results {
+        [_, r2, ..] -> r2
+        _ -> pipeline.Failed("no result")
+      }),
+    ])
+  let trace_json = emit.json(ctx, ngx.now())
+  let _ = http.log(r, "request_tracing: workflow — " <> trace_json)
+  let headers = propagate.propagation_headers(ctx)
+  set_headers(r, headers)
+  http.return_code(r, 204)
+  promise.resolve(Nil)
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("traced", traced)
   |> ngx.merge("traced_with_log", traced_with_log)
   |> ngx.merge("traced_with_session", traced_with_session)
+  |> ngx.merge("traced_workflow", traced_workflow)
 }

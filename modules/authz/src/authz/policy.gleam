@@ -155,6 +155,18 @@ pub fn not_(rule: Rule) -> Rule {
   }
 }
 
+/// Wrap a rule so it always allows, regardless of the inner decision.
+/// Use during rollout / dry-run mode: the rule is evaluated for its side
+/// effects (logging, metrics) but the request is never blocked.
+/// Combine with `enrich.inject_status` to surface the shadow decision
+/// to downstream services without enforcing it.
+pub fn observe(rule: Rule) -> Rule {
+  fn(ctx: Context) -> Decision {
+    let _ = rule(ctx)
+    Allow
+  }
+}
+
 fn split_multi(value: String) -> List(String) {
   value
   |> string.split(",")

@@ -232,6 +232,22 @@ fn waf_check(r: HTTPRequest) -> Nil {
   }
 }
 
+/// Like waf_check but also injects WAF facts as response headers
+/// (X-Authz-Waf-Result, X-Authz-Waf-Score, X-Authz-Waf-Category,
+/// X-Authz-Waf-Rule-Id). Use with auth_request so downstream locations
+/// can observe WAF signals without re-reading native variables.
+fn enriched_waf_check(r: HTTPRequest) -> Nil {
+  let fact = security.waf_from_request(r)
+  let _ = enrich.inject_waf_facts(r, fact)
+  case security.waf_pass(fact) {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
 /// Allow-path nftset check: reads $nftset_result and passes the request if the
 /// nftset result is "allow" or not set. Returns 204 on pass, 403 on deny.
 fn nftset_check(r: HTTPRequest) -> Nil {
@@ -288,5 +304,6 @@ pub fn exports() -> JsObject {
   |> ngx.merge("oidc_check", oidc_check)
   |> ngx.merge("enriched_oidc_check", enriched_oidc_check)
   |> ngx.merge("waf_check", waf_check)
+  |> ngx.merge("enriched_waf_check", enriched_waf_check)
   |> ngx.merge("nftset_check", nftset_check)
 }

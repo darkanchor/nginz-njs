@@ -313,9 +313,19 @@ Absorb the real value from the removed `security_gateway` and `oidc_bridge` plan
 
 The principle is simple: keep one policy DSL (`all_of` / `any_of` / `not_`), not two.
 
-**Open upstream enabler:** nginx/njs PR #1044 (`js_access` + request body/form readers) is a credible future uplift for this track if it lands substantially as proposed. It would let `authz` add optional pre-content adapters for access-phase policy, body-aware checks, and form-aware gates without routing everything through `js_content` or `auth_request` workarounds.
+**Upstream enabler status:** nginx/njs PR #1044 (`js_access` + request body/form readers) has **merged in the upstream njs project**. The impact splits into two distinct concerns:
 
-This is **not current capability** and it does **not** reopen the consolidation decisions above. Even if PR #1044 lands, it does not by itself justify recreating the old split; it is an enabler for the existing foundation modules instead.
+**`js_access` directive — no ngs change needed.** `js_access` is a new nginx configuration directive that runs a njs function in `NGX_HTTP_ACCESS_PHASE`, before `js_content` / `proxy_pass` / `fastcgi_pass`. Our existing Gleam handlers (`jwt_check`, `waf_check`, `oidc_check`, `check`, etc.) work under it immediately — just swap `js_content main.jwt_check` for `js_access main.jwt_check` in nginx.conf. Gate: next njs release that includes this PR.
+
+**Body-reading methods — ngs FFI bindings needed.** `r.readRequestText()`, `r.readRequestArrayBuffer()`, `r.readRequestJSON()`, and `r.readRequestForm()` are new methods on the njs request object. ngs would need to expose them as Gleam bindings (additions to `njs/http.gleam`) before `authz` can use them from Gleam. Gate: ngs adds these to its http binding surface.
+
+**Key capabilities unlocked for `authz`:**
+- Existing handlers in `js_access` phase: available now once njs release ships (no code changes)
+- Body-aware claim rules (`readRequestJSON` → field → `has_claim`): blocked on ngs bindings
+- `r.decline()` for `satisfy any` composition: also blocked on ngs binding for decline semantics
+- Access-phase redirect (`r.return(302, url)`) for OIDC login flows: possible with `return_code` already; the redirect target needs to be wired in nginx.conf
+
+The consolidation decisions from Milestone 2 still stand. `js_access` does not justify recreating old split packages; it is an enabler for the existing `authz` foundation.
 
 #### Track B — extend `workflow` with resilience primitives
 

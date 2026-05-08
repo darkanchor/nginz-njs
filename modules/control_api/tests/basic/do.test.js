@@ -10,7 +10,7 @@ import {
 const MODULE = "control_api";
 const CONF = join(import.meta.dir, "nginx.conf");
 
-describe("control_api — scaffold demo", () => {
+describe("control_api — runtime API", () => {
   beforeAll(async () => {
     await startNginx(CONF, MODULE);
   });
@@ -20,33 +20,57 @@ describe("control_api — scaffold demo", () => {
     cleanupRuntime(MODULE);
   });
 
-  test("describe returns stable route inventory", async () => {
+  test("describe returns route inventory", async () => {
     const res = await fetch(`${TEST_URL}/runtime/describe`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe(
-      "GET /runtime/describe name=describe\nGET /runtime/health name=health\nGET /runtime/flag name=inspect_flag\nGET /runtime/flag/preview name=toggle_flag_preview",
-    );
+    const body = await res.text();
+    expect(body).toContain("GET /runtime/health");
+    expect(body).toContain("GET /runtime/flag");
+    expect(body).toContain("GET /runtime/cache/probe");
   });
 
-  test("health returns ok runtime status", async () => {
+  test("health returns JSON ok", async () => {
     const res = await fetch(`${TEST_URL}/runtime/health`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("ok control_api=ready");
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("ok");
+    expect(body.service).toBe("control_api");
   });
 
-  test("inspect_flag previews named flag", async () => {
-    const res = await fetch(`${TEST_URL}/runtime/flag?name=dark_mode`);
+  test("inspect_flag returns error for unknown flag", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/flag?name=unknown_flag`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("ok flag=dark_mode mode=inspect");
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("error");
+    expect(body.message).toContain("unknown_flag");
   });
 
-  test("toggle_flag_preview previews a write request", async () => {
-    const res = await fetch(
-      `${TEST_URL}/runtime/flag/preview?name=dark_mode&enabled=1`,
+  test("inspect_flag requires name param", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/flag`);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("error");
+  });
+
+  test("toggle_flag writes flag and inspect_flag reads it back", async () => {
+    const setRes = await fetch(
+      `${TEST_URL}/runtime/flag/set?name=dark_mode&enabled=1&pct=50`,
     );
-    expect(res.status).toBe(200);
-    expect(await res.text()).toBe(
-      "ok preview=set_flag name=dark_mode enabled=1",
-    );
+    expect(setRes.status).toBe(200);
+    const setBody = JSON.parse(await setRes.text());
+    expect(setBody.status).toBe("ok");
+    expect(setBody.action).toBe("set");
+    expect(setBody.name).toBe("dark_mode");
+    expect(setBody.enabled).toBe("true");
+    expect(setBody.rollout_pct).toBe("50");
+
+    const getRes = await fetch(`${TEST_URL}/runtime/flag?name=dark_mode`);
+    expect(getRes.status).toBe(200);
+    const getBody = JSON.parse(await getRes.text());
+    expect(getBody.status).toBe("ok");
+    expect(getBody.name).toBe("dark_mode");
+    expect(getBody.enabled).toBe("true");
+    expect(getBody.rollout_pct).toBe("50");
   });
 });

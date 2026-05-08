@@ -13,7 +13,17 @@ pub type OidcIdentity {
 /// non-empty values. Merge with Context.claims so existing policy rules
 /// (has_claim, claim_one_of, claim_present, etc.) apply to OIDC identities.
 pub fn from_request(r: HTTPRequest) -> Dict(String, String) {
-  list.fold(["sub", "email", "name"], dict.new(), fn(acc, field) {
+  from_request_with_fields(r, ["sub", "email", "name"])
+}
+
+/// Read a configurable set of OIDC claim fields from $oidc_claim_* nginx vars.
+/// Only non-empty values are included. Useful for extended claim sets such as
+/// groups, roles, locale, or tenant identifiers beyond the default three.
+pub fn from_request_with_fields(
+  r: HTTPRequest,
+  fields: List(String),
+) -> Dict(String, String) {
+  list.fold(fields, dict.new(), fn(acc, field) {
     case http.get_variable(r, "oidc_claim_" <> field) {
       Ok(val) ->
         case val {
@@ -34,4 +44,18 @@ pub fn identity_from_request(r: HTTPRequest) -> OidcIdentity {
     }
   }
   OidcIdentity(sub: get("sub"), email: get("email"), name: get("name"))
+}
+
+/// Convert a typed OidcIdentity to a claims dict for use with policy rules.
+/// Only non-empty fields are inserted, so `has_claim` / `claim_present` work
+/// as presence checks on the upstream identity.
+pub fn identity_to_claims(identity: OidcIdentity) -> Dict(String, String) {
+  [#("sub", identity.sub), #("email", identity.email), #("name", identity.name)]
+  |> list.fold(dict.new(), fn(acc, pair) {
+    let #(k, v) = pair
+    case v {
+      "" -> acc
+      _ -> dict.insert(acc, k, v)
+    }
+  })
 }
