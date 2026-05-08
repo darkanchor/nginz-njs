@@ -79,4 +79,14 @@ describe("workflow — chain subrequest", () => {
     const body = await res.text();
     expect(body).toMatch(/^ok=2 fail=0$/);
   });
+
+  test("templated-parallel hands final shaping to response_templating", async () => {
+    const res = await fetch(`${TEST_URL}/templated-parallel`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({
+      upstream_a: "response-a",
+      upstream_b: "response-b",
+    });
+  });
 });

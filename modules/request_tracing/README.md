@@ -52,6 +52,7 @@ The native module owns the hot-path ID generation. This module owns trace propag
 | `main.traced` | `js_content` | Propagates X-Request-ID and X-Trace-ID headers, returns 204 |
 | `main.traced_with_log` | `js_content` | Propagates headers and emits a structured JSON trace log line |
 | `main.traced_with_session` | `js_content` | Propagates headers with session correlation for debugging |
+| `main.traced_workflow` | `js_content` | Runs a small workflow, records step spans, emits a structured trace log line |
 
 ## nginx configuration
 
@@ -67,6 +68,7 @@ http {
         location /api/    { js_content main.traced; }
         location /log/    { js_content main.traced_with_log; }
         location /correlated/ { js_content main.traced_with_session; }
+        location /workflow/ { js_content main.traced_workflow; }
     }
 }
 ```
@@ -104,21 +106,25 @@ http {
 **`request_tracing/record.gleam`**
 - `record_span(ctx, name, duration_ms, status)` — pipe-friendly span accumulator
 - `record_result(ctx, name, duration_ms, status)` — records a span from an observed step outcome
+- `record_step_results(ctx, start, now, named_results)` — records workflow step outcomes as spans
 
 **`nginz_njs_request_tracing.gleam`** (njs entry point)
-- 3 handlers: `traced`, `traced_with_log`, `traced_with_session`
+- 4 handlers: `traced`, `traced_with_log`, `traced_with_session`, `traced_workflow`
 - Reads `$ngz_request_id` (falls back to `$request_id`, then `"unknown"`)
 - Uses `ngx.now()` via the `ngs` package for start time
 - Emits trace lines via `http.log()` in the content phase
+- `traced_workflow` composes `workflow/pipeline` + `record.record_step_results` to emit span-bearing trace JSON
 
 **Integration tests**
-- `tests/basic/` — 3 scenarios: header propagation, structured log emission, session correlation
+- `tests/basic/` — 3 scenarios: header propagation, structured log path, session correlation
+- `tests/workflow/` — 2 scenarios: traced workflow composition and stable trace header propagation
+- `tests/requestid/` — native requestid integration, structured log emission, and correlation log path (`make` required)
 
 ## Cross-module composition
 
-### workflow — span recording (library available)
+### workflow — span recording (library and demo handler available)
 
-The `request_tracing/record` module provides `record_result` for wrapping workflow steps. Current entry point handlers do not record spans; workflow integration is a future enhancement:
+The `request_tracing/record` module provides `record_result` for wrapping workflow steps, and the `traced_workflow` handler demonstrates that composition end-to-end by recording subrequest results as spans:
 
 ```gleam
 import request_tracing/record
@@ -160,7 +166,7 @@ The newer native `prometheus` variables (`$prometheus_requests_total`, `$prometh
 - Pure trace model: `$ngz_request_id` → `TraceContext` → structured output
 - Header propagation: `X-Request-ID` and `X-Trace-ID` for upstream requests
 - Trace emission: JSON and logfmt renderers
-- nginx handlers: traced, traced_with_log, traced_with_session variants
+- nginx handlers: traced, traced_with_log, traced_with_session, and traced_workflow variants
 - Integration test coverage for all handler variants
 
 Future work should stay disciplined: deepen composition through existing modules (`workflow`, `http_client`, `metrics`) without turning this package into a second workflow or metrics system.
@@ -182,7 +188,8 @@ Future work should stay disciplined: deepen composition through existing modules
 
 ### Phase 3 — composition through existing modules (future)
 
-- [ ] Entry point handlers compose `request_tracing/record` for span recording
+- [x] `traced_workflow` composes `request_tracing/record` for span recording
+- [ ] broaden span recording beyond the workflow demo handler where it adds real value
 - [ ] Entry point handlers compose `request_tracing/metrics` for trace emission
 - [ ] Trace context propagation through `http_client` middleware
 - [ ] OpenTelemetry-compatible trace format emission
@@ -205,16 +212,19 @@ Goal: make tracing feel native to the rest of the repo by wiring the existing re
 - [x] unit-test propagation_headers output
 - [x] unit-test emit.json and emit.logfmt rendering
 - [x] `tests/basic/` — 3 integration scenarios with simulated `$ngz_request_id`
+- [x] `tests/workflow/` — traced workflow composition with stable propagated trace headers
+- [x] `tests/requestid/` — native requestid integration, log emission, and correlation paths
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js request_tracing` — 10 unit tests pass
+- [x] `bun scripts/test.js request_tracing` — 12 unit tests pass
 - [x] `bun test modules/request_tracing/tests/basic/do.test.js` — 3 integration tests pass
+- [x] `bun test modules/request_tracing/tests/workflow/do.test.js` — 2 traced workflow integration tests pass
 - [x] `bun test modules/request_tracing/tests/requestid/do.test.js` — native requestid integration passes (`make` required)
 
 ## Limitations
 
-- **Span recording not wired to handlers.** The `record.gleam` module provides the interface but entry point handlers do not record spans. Full workflow/pipeline integration is a future enhancement.
+- **Span recording is only wired in the workflow demo handler.** `traced_workflow` records spans today, but the simpler entry-point handlers still focus on propagation/logging rather than general span capture.
 - **No OpenTelemetry format.** Trace emission currently uses custom JSON/logfmt. OTLP-compatible format is a future item.
 - **Log-phase emission is simulated.** The current handler emits trace lines via `http.log()` in the content phase. True log-phase emission requires a `js_log` handler pattern.
 - **Session correlation requires auth_request.** The `traced_with_session` handler expects `$session_subject` to be set by a prior `auth_request` call.

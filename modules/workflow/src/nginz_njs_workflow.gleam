@@ -3,13 +3,15 @@ import gleam/list
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
+import response_templating/model as template_model
+import response_templating/render as template_render
 import workflow/cache as wf_cache
 import workflow/circuit
 import workflow/merge
 import workflow/pipeline.{
-  Failed, Fetched, fail_on_status, fetch_step, filter_ok, first_ok, map_body,
-  map_step, recover, run_parallel, run_sequential, subrequest_step, with_retry,
-  with_timeout,
+  Failed, Fetched, all_success, fail_on_status, fetch_step, filter_ok, first_ok,
+  map_body, map_step, recover, run_parallel, run_sequential, subrequest_step,
+  with_retry, with_timeout,
 }
 
 // --- Enrich (parallel fan-out, existing) ---
@@ -228,6 +230,48 @@ fn summary(r: HTTPRequest) -> Promise(Nil) {
   promise.resolve(Nil)
 }
 
+fn templated_parallel_template() -> template_model.Template {
+  template_model.json(
+    "workflow_parallel_json",
+    "{\"upstream_a\":\"{{upstream_a}}\",\"upstream_b\":\"{{upstream_b}}\"}",
+    ["upstream_a", "upstream_b"],
+  )
+}
+
+/// Run two subrequests in parallel and hand final response shaping to
+/// response_templating instead of assembling the JSON directly in workflow.
+fn templated_parallel(r: HTTPRequest) -> Promise(Nil) {
+  let steps = [
+    subrequest_step("/internal/upstream-a"),
+    subrequest_step("/internal/upstream-b"),
+  ]
+  use results <- promise.await(run_parallel(r, steps))
+  case all_success(results) {
+    False -> {
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+    True ->
+      case filter_ok(results) {
+        [#(_, upstream_a), #(_, upstream_b)] -> {
+          let body =
+            templated_parallel_template()
+            |> template_render.render([
+              template_render.binding("upstream_a", upstream_a),
+              template_render.binding("upstream_b", upstream_b),
+            ])
+          let _ = http.set_headers_out(r, "Content-Type", "application/json")
+          http.return_text(r, 200, body)
+          promise.resolve(Nil)
+        }
+        _ -> {
+          http.return_code(r, 502)
+          promise.resolve(Nil)
+        }
+      }
+  }
+}
+
 // --- Cached step demos ---
 
 /// Wrap a subrequest step with read-through caching in the `workflow_cache`
@@ -345,6 +389,7 @@ pub fn exports() -> JsObject {
   |> ngx.merge("first_ok_demo", first_ok_demo)
   |> ngx.merge("map_body_demo", map_body_demo)
   |> ngx.merge("summary", summary)
+  |> ngx.merge("templated_parallel", templated_parallel)
   |> ngx.merge("circuit_state", circuit_state)
   |> ngx.merge("circuit_trip", circuit_trip)
   |> ngx.merge("circuit_probe", circuit_probe)

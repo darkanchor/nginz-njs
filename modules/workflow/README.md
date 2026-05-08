@@ -42,6 +42,10 @@ Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines for nginx
 - `require_all(results)` — require every step to succeed
 - `select_first_ok(results, default)` — choose the first success or a fallback
 
+**`workflow/cache.gleam`**
+- `cached_step(step, dict_name, key, ttl_s)` — read-through caching for a workflow step via `mlcache/shared`
+- `stale_while_refresh(step, dict_name, key, ttl_s, stale_ttl_s)` — serve stale cached results while refreshing in the background
+
 **`nginz_njs_workflow.gleam`** (njs entry point)
 - `enrich` — fans out to `/internal/auth` and `/internal/profile` in parallel; joins bodies with newline; returns 502 if either fails
 - `chain` — single sequential subrequest to `/internal/upstream`; proxies status and body
@@ -53,9 +57,13 @@ Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines for nginx
 - `first_ok_demo` — returns the first successful upstream response
 - `map_body_demo` — transforms an upstream response body
 - `summary` — returns aggregate success/failure counts for a workflow run
+- `templated_parallel` — runs two subrequests in parallel and hands final JSON shaping to `response_templating`
+- `cached_workflow` — wraps a subrequest step with read-through caching in `workflow_cache`
+- `stale_demo` — wraps a subrequest step with stale-while-refresh caching semantics
 
 **Integration tests**
-- `tests/basic/` — 9 scenarios covering chain, fetch_chain, sequential, retry, timeout, recovery, first_ok, body mapping, and summary without native deps
+- `tests/basic/` — 10 scenarios covering chain, fetch_chain, sequential, retry, timeout, recovery, first_ok, body mapping, summary, and templated response shaping without native deps
+- `tests/cache/` — 4 scenarios covering cache hit/miss and stale-while-refresh status/body preservation
 - `tests/enrich/` — 2 fan-out scenarios against native `echoz` backends (`make` required)
 
 ## Roadmap position
@@ -105,9 +113,11 @@ Cross-module direction: response/body shaping may later compose `response_transf
 - timeout, retry, and recovery wrappers
 - result mapping/filtering helpers
 - merge/fallback combinators
+- cache-aware step helpers for read-through and stale-while-refresh orchestration
+- response-generation handoff to `response_templating` for final shaping when orchestration should not own body construction
 - nginx handlers and integration scenarios demonstrating those behaviors
 
-Future integrations such as `response_transform`, `metrics`, or shared-state caching are intentionally outside the current completion bar.
+Future integrations such as `response_transform`, `metrics`, or trace-aware composition are intentionally outside the current completion bar.
 
 ## Future consolidation track
 
@@ -128,10 +138,11 @@ Goal: absorb the real value of the old circuit-breaker wrapper design without tu
 Goal: turn the existing orchestration core into the place where response shaping, tracing, and cache-aware resilience compose cleanly.
 
 - [ ] compose `request_tracing/record` with workflow step execution so span recording becomes a normal recipe instead of an external note
-- [ ] add cache-aware orchestration examples and helpers that pair `workflow` with `mlcache` for read-through, stale-while-refresh, and fallback selection
-- [ ] add response-generation examples showing when `workflow` should hand final shaping to `response_templating` versus `response_transform`
+- [x] add cache-aware orchestration examples and helpers that pair `workflow` with `mlcache` for read-through and stale-while-refresh composition
+- [x] add response-generation examples showing when `workflow` should hand final shaping to `response_templating` versus `response_transform`
 - [ ] add metrics/tracing instrumentation recipes without baking those concerns into the step algebra itself
-- [ ] integration coverage for degraded fallback selection plus one cache-aware or tracing-aware composed workflow
+- [ ] integration coverage for degraded fallback selection without coupling to standalone 503 page adapters
+- [x] integration coverage for one cache-aware composed workflow
 
 ## TDD plan
 
@@ -147,6 +158,7 @@ Goal: turn the existing orchestration core into the place where response shaping
 ## Verification checklist
 
 - [x] `bun scripts/test.js workflow` — 38 unit tests pass
-- [x] `bun test modules/workflow/tests/basic/do.test.js` — 9 basic integration tests pass
+- [x] `bun test modules/workflow/tests/basic/do.test.js` — 10 basic integration tests pass
+- [x] `bun test modules/workflow/tests/cache/do.test.js` — 4 cache-aware integration tests pass
 - [x] `bun test modules/workflow/tests/enrich/do.test.js` — 2 fan-out integration tests pass (`make` required)
 - [x] `bun test modules/workflow/tests/circuit/do.test.js` — circuit-aware orchestration passes (`make` required)
