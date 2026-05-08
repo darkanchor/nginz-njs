@@ -1,7 +1,7 @@
 {
-  "issuer": "http://127.0.0.1:9999",
-  "authorization_endpoint": "http://127.0.0.1:9999/authorize",
-  "token_endpoint": "http://127.0.0.1:9999/token",
-  "userinfo_endpoint": "http://127.0.0.1:9999/userinfo",
+  "issuer": "http://127.0.0.1:9998",
+  "authorization_endpoint": "http://127.0.0.1:9998/authorize",
+  "token_endpoint": "http://127.0.0.1:9998/token",
+  "userinfo_endpoint": "http://127.0.0.1:9998/userinfo",
   "jwks_uri": "/home/kaiwu/Documents/gitea/nginz-njs/submodules/nginz/tests/oidc/jwks.json"
 }

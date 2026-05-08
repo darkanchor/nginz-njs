@@ -1,12 +1,17 @@
 import authz/metrics
 import authz/policy.{
   type Context, Allow, Context, Deny, all_of, any_of, async_evaluate,
-  claim_contains, claim_contains_one_of, claim_one_of, deny_401, deny_403,
-  evaluate, has_claim, header_one_of, method_in, not_, path_prefix, query_param,
-  query_param_one_of, remote_addr_in, require_header, to_async,
+  claim_contains, claim_contains_one_of, claim_one_of, claim_present, deny_401,
+  deny_403, evaluate, has_claim, header_one_of, method_in, not_, path_prefix,
+  query_param, query_param_one_of, remote_addr_in, require_header, to_async,
+}
+import authz/security.{
+  NftsetAllow, NftsetDeny, NftsetFact, WafAllowed, WafDenied, WafDryRun, WafFact,
+  nftset_pass, waf_pass,
 }
 import gleam/dict
 import gleam/javascript/promise
+import gleam/option.{None, Some}
 import gleeunit
 import gleeunit/should
 import metrics/line
@@ -506,4 +511,75 @@ pub fn metrics_opa_call_outcome_deny_test() {
   )
   line.render_statsd(timing)
   |> should.equal("nginz.authz_opa_latency_ms:25|ms|#route:opa")
+}
+
+// --- claim_present ---
+
+pub fn claim_present_allow_test() {
+  let ctx_c =
+    Context(..ctx("GET", "/api"), claims: dict.from_list([#("sub", "u123")]))
+  ctx_c
+  |> evaluate([claim_present("sub")])
+  |> should.equal(Allow)
+}
+
+pub fn claim_present_deny_missing_test() {
+  ctx("GET", "/api")
+  |> evaluate([claim_present("sub")])
+  |> should.equal(Deny(401, "missing required claim: sub"))
+}
+
+// --- security: waf_pass ---
+
+pub fn waf_pass_none_test() {
+  waf_pass(None)
+  |> should.equal(Allow)
+}
+
+pub fn waf_pass_allowed_test() {
+  waf_pass(
+    Some(WafFact(result: WafAllowed, rule_id: 0, score: 0, category: "")),
+  )
+  |> should.equal(Allow)
+}
+
+pub fn waf_pass_dryrun_test() {
+  waf_pass(
+    Some(WafFact(result: WafDryRun, rule_id: 42, score: 30, category: "sqli")),
+  )
+  |> should.equal(Allow)
+}
+
+pub fn waf_pass_denied_with_category_test() {
+  waf_pass(
+    Some(WafFact(result: WafDenied, rule_id: 10, score: 80, category: "sqli")),
+  )
+  |> should.equal(Deny(403, "waf: request denied [sqli]"))
+}
+
+pub fn waf_pass_denied_no_category_test() {
+  waf_pass(Some(WafFact(result: WafDenied, rule_id: 0, score: 0, category: "")))
+  |> should.equal(Deny(403, "waf: request denied"))
+}
+
+// --- security: nftset_pass ---
+
+pub fn nftset_pass_none_test() {
+  nftset_pass(None)
+  |> should.equal(Allow)
+}
+
+pub fn nftset_pass_allow_test() {
+  nftset_pass(Some(NftsetFact(result: NftsetAllow, matched_set: "")))
+  |> should.equal(Allow)
+}
+
+pub fn nftset_pass_deny_with_set_name_test() {
+  nftset_pass(Some(NftsetFact(result: NftsetDeny, matched_set: "blocklist")))
+  |> should.equal(Deny(403, "nftset: denied by blocklist"))
+}
+
+pub fn nftset_pass_deny_no_set_name_test() {
+  nftset_pass(Some(NftsetFact(result: NftsetDeny, matched_set: "")))
+  |> should.equal(Deny(403, "nftset: request denied"))
 }

@@ -81,12 +81,15 @@ Why scripted:
 - A natural "programmable gateway" use case
 
 Shipped:
-- Multi-value claim rules: `claim_contains`, `claim_contains_one_of`
-- `authz/claims.from_vars` — reads any list of `jwt_claim_*` nginx vars into a claims dict
+- Multi-value claim rules: `claim_contains`, `claim_contains_one_of`, `claim_present`
+- `authz/claims` — reads any list of `jwt_claim_*` nginx vars into a claims dict
+- `authz/oidc` — normalizes `$oidc_claim_sub/email/name` into the same claims dict; `identity_from_request` returns typed `OidcIdentity`
+- `authz/security` — typed `WafFact` / `NftsetFact` from native variables; `waf_pass` / `nftset_pass` allow-path decisions; `waf_pass_rule` / `nftset_pass_rule` Rule factories
 - `authz/remote.opa_allow` — async OPA-compatible remote decision via `http_client`
 - `authz/cache` — `ngx.shared`-backed decision cache keyed by SHA-256 of the Bearer token
 - `authz/enrich` — `X-Authz-Status` / `X-Authz-<Claim>` header injection for `auth_request` flows
-- 7 njs handler exports covering all combinations of the above
+- `authz/subrequest` — `auth_request_step` AsyncRule backed by nginx internal subrequest
+- 12 njs handler exports: `check`, `jwt_check`, `remote_check`, `cached_remote_check`, `enriched_check`, `enriched_jwt_check`, `enriched_remote_check`, `session_gate`, `oidc_check`, `enriched_oidc_check`, `waf_check`, `nftset_check`
 - Remaining open: no runtime policy reload (requires nginx reload; inherent to njs bundle model)
 
 ### Tier 2 — depends on or pairs with native work

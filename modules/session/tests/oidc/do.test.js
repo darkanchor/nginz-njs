@@ -49,7 +49,7 @@ async function doOIDCFlow() {
 
 describe("session — OIDC-backed session start", () => {
   beforeAll(async () => {
-    oidcMock = new OIDCMock(9999).start();
+    oidcMock = new OIDCMock(9998).start();
     await startNginx(CONF, MODULE);
   });
 

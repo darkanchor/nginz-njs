@@ -190,6 +190,18 @@ pub fn claim_contains_one_of(key: String, allowed: List(String)) -> Rule {
   }
 }
 
+/// Allow if the claim key exists with any non-empty value.
+/// Useful for OIDC identity gates where the subject must be present but the
+/// exact value is not known at policy-write time.
+pub fn claim_present(key: String) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.claims, key) {
+      Ok(_) -> Allow
+      Error(_) -> Deny(401, "missing required claim: " <> key)
+    }
+  }
+}
+
 pub fn query_param(key: String, value: String) -> Rule {
   fn(ctx: Context) -> Decision {
     case dict.get(ctx.query, key) {

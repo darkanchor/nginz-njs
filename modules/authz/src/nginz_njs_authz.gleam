@@ -1,8 +1,10 @@
 import authz/cache.{Hit, Miss}
 import authz/claims
 import authz/enrich
+import authz/oidc
 import authz/policy.{type Context, type Decision, Allow, Context, Deny}
 import authz/remote
+import authz/security
 import gleam/dict
 import gleam/int
 import gleam/javascript/promise.{type Promise}
@@ -184,6 +186,65 @@ fn enriched_remote_check(r: HTTPRequest) -> Promise(Nil) {
   apply_decision(r, decision, "authz: remote denied — ")
 }
 
+/// Reads OIDC identity from $oidc_claim_* variables set by the native oidc module
+/// and requires the subject claim to be present (authenticated identity).
+/// Compose the returned claims into richer policy trees with claim_one_of, etc.
+fn oidc_check(r: HTTPRequest) -> Nil {
+  let ctx = Context(..context_from_request(r), claims: oidc.from_request(r))
+  let rules = [policy.claim_present("sub")]
+  case policy.evaluate(ctx, rules) {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: oidc denied — " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
+/// Like oidc_check but also injects X-Authz-Status and X-Authz-<Claim> headers
+/// so the upstream receives the OIDC identity without re-reading nginx variables.
+fn enriched_oidc_check(r: HTTPRequest) -> Nil {
+  let ctx = Context(..context_from_request(r), claims: oidc.from_request(r))
+  let rules = [policy.claim_present("sub")]
+  let decision = policy.evaluate(ctx, rules)
+  let _ = enrich.inject_status(r, decision)
+  let _ = enrich.inject_claims(r, ctx)
+  case decision {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: oidc denied — " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
+/// Allow-path WAF check: reads $waf_result and passes the request if the WAF
+/// result is "allowed" or "dryrun". Returns 204 on pass, 403 on deny.
+/// Does not reconstruct WAF deny decisions from error_page redirects.
+fn waf_check(r: HTTPRequest) -> Nil {
+  let fact = security.waf_from_request(r)
+  case security.waf_pass(fact) {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
+/// Allow-path nftset check: reads $nftset_result and passes the request if the
+/// nftset result is "allow" or not set. Returns 204 on pass, 403 on deny.
+fn nftset_check(r: HTTPRequest) -> Nil {
+  let fact = security.nftset_from_request(r)
+  case security.nftset_pass(fact) {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
 /// Verify a session cookie and forward the session subject to the upstream.
 /// Reads $session_dict from nginx variables. Designed for use with nginx
 /// auth_request — returns 204 + X-Session-Subject on success, 401 otherwise.
@@ -224,4 +285,8 @@ pub fn exports() -> JsObject {
   |> ngx.merge("enriched_jwt_check", enriched_jwt_check)
   |> ngx.merge("enriched_remote_check", enriched_remote_check)
   |> ngx.merge("session_gate", session_gate)
+  |> ngx.merge("oidc_check", oidc_check)
+  |> ngx.merge("enriched_oidc_check", enriched_oidc_check)
+  |> ngx.merge("waf_check", waf_check)
+  |> ngx.merge("nftset_check", nftset_check)
 }
