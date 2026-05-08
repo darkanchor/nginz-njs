@@ -7,6 +7,7 @@ import request_tracing/emit
 import request_tracing/metrics
 import request_tracing/model.{add_span, context, summary, total_duration}
 import request_tracing/propagate.{propagation_headers}
+import request_tracing/record
 
 pub fn main() {
   gleeunit.main()
@@ -98,6 +99,25 @@ pub fn emit_logfmt_test() {
 }
 
 // --- metrics tests ---
+
+pub fn record_result_test() {
+  let ctx =
+    record.record_result(context("req-1", 1000), "upstream_auth", 42, 502)
+  let assert [span] = ctx.spans
+  span.name |> should.equal("upstream_auth")
+  span.duration_ms |> should.equal(42)
+  span.status |> should.equal(502)
+  span.success |> should.equal(False)
+}
+
+pub fn latency_metric_test() {
+  let ctx = context("req-1", 1000)
+  let m = metrics.latency_metric(ctx, 42, "/api")
+  line.render_statsd(m)
+  |> should.equal(
+    "nginz.request_trace_duration_ms:42|ms|#route:/api,request_id:req-1",
+  )
+}
 
 pub fn traced_counter_test() {
   let ctx = context("req-1", 1000)

@@ -14,12 +14,13 @@ pub fn record_span(
   add_span(ctx, name, duration_ms, status)
 }
 
-/// Record a span from a workflow step result. Accepts any result type so it
-/// can be inserted into a pipeline without unwrapping.
+/// Record a span from an observed step outcome when the caller already has
+/// the measured duration and resulting status code.
 pub fn record_result(
   ctx: TraceContext,
   name: String,
+  duration_ms: Int,
   status: Int,
 ) -> TraceContext {
-  add_span(ctx, name, 0, status)
+  add_span(ctx, name, duration_ms, status)
 }

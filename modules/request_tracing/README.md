@@ -103,7 +103,7 @@ http {
 
 **`request_tracing/record.gleam`**
 - `record_span(ctx, name, duration_ms, status)` — pipe-friendly span accumulator
-- `record_result(ctx, name, status)` — records a span from a workflow step result
+- `record_result(ctx, name, duration_ms, status)` — records a span from an observed step outcome
 
 **`nginz_njs_request_tracing.gleam`** (njs entry point)
 - 3 handlers: `traced`, `traced_with_log`, `traced_with_session`
@@ -123,7 +123,7 @@ The `request_tracing/record` module provides `record_result` for wrapping workfl
 ```gleam
 import request_tracing/record
 
-let traced_step = record.record_result(ctx, "upstream_auth", step_result)
+let traced_step = record.record_result(ctx, "upstream_auth", 42, 200)
 ```
 
 ### http_client — header injection (library available)
@@ -210,7 +210,7 @@ Goal: make tracing feel native to the rest of the repo by wiring the existing re
 
 - [x] `bun scripts/test.js request_tracing` — 10 unit tests pass
 - [x] `bun test modules/request_tracing/tests/basic/do.test.js` — 3 integration tests pass
-- [ ] `make NGINZ_MODULES="requestid" && bun run test:native` — native integration (requires native module)
+- [x] `bun test modules/request_tracing/tests/requestid/do.test.js` — native requestid integration passes (`make` required)
 
 ## Limitations
 
