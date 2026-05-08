@@ -6,7 +6,7 @@ Operator-facing control surface for nginx written in Gleam. This module is the M
 
 **The problem**: once a gateway grows beyond static config, operators need to inspect and adjust behavior without turning every change into “edit a file and reload nginx.” Feature flags, cache state, session facts, tracing summaries, and small control actions all become much more useful when they can be observed and managed through one coherent runtime surface.
 
-**How it solves it**: this module gives the ecosystem a shared control face. Instead of each module inventing its own tiny admin dialect, `control_api` creates one operator-oriented surface for listing control routes, reading state, previewing changes, and later performing controlled writes. That makes the platform feel like a product, not just a set of unrelated building blocks.
+**How it solves it**: this module gives the ecosystem a shared control face. Instead of each module inventing its own tiny admin dialect, `control_api` creates one operator-oriented surface for listing control routes, reading state, and performing small trusted control actions against runtime-backed modules. That makes the platform feel like a product, not just a set of unrelated building blocks.
 
 **When you would use this**: use it when nginx is acting like a programmable edge and you need a safe internal API for operations. That can mean reading a flag, checking cache/session state, exposing health or trace summaries, or driving small trusted control-plane actions from CI/CD or internal tooling.
 
@@ -59,36 +59,50 @@ The long-term shape is closer to a tiny internal control plane than a random set
 - `/runtime/session/...` — inspect lifecycle/config summaries and safe operational facts
 - `/runtime/tracing/...` — debug/summary surfaces over tracing state when appropriate
 
-The module should begin with text or simple JSON responses and only add richer contracts once the ownership lines are proven.
+The current surface is intentionally small and JSON-first: it proves route inventory, health, flag inspection/write, and cache/session probes before broader control-plane ambitions.
 
 ## What is implemented
 
 **`control_api/model.gleam`**
 - `Endpoint` — named runtime endpoint descriptor
-- `demo_endpoints()` — stable scaffold endpoint list
-- `summary()` — human-readable endpoint summary
+- `endpoints()` — stable route inventory for the current runtime surface
+- `summary()` / `describe_all()` — human-readable endpoint summaries
 
 **`control_api/response.gleam`**
-- `ok(body)` — stable ok response text wrapper
-- `error(body)` — stable error response text wrapper
-- `kv(key, value)` — helper for simple key/value lines
+- `json_object(fields)` — flat JSON object rendering helper
+- `json_ok(fields)` — stable ok envelope for operational responses
+- `json_error(message)` — stable error envelope for validation/runtime failures
+
+**`control_api/flag.gleam`**
+- `inspect(dict_name, flag_name)` — reads runtime-backed feature flag state
+- `toggle(dict_name, flag_name, enabled, rollout_pct, ttl_s)` — writes flag state to the configured shared dict
+
+**`control_api/probe.gleam`**
+- `system_info()` — basic module/version/timestamp surface
+- `cache_probe(dict_name)` — shared-dict reachability probe via `mlcache/shared`
+
+**`control_api/session_probe.gleam`**
+- `session_probe(dict_name)` — shared-dict reachability probe via `session/store`
 
 **`control_api/router.gleam`**
-- `describe_routes()` — stable route inventory for scaffold testing
+- `describe_routes()` — route inventory adapter over `model.describe_all()`
 
 **`nginz_njs_control_api.gleam`**
 - `describe` — returns the stable route inventory
-- `health` — returns a small ok runtime status
+- `health` — returns a JSON health payload for the module
+- `system_info` — returns module/version/timestamp runtime info
 - `inspect_flag` — inspects a requested flag name from query parameters
-- `toggle_flag_preview` — returns a preview of a runtime flag write request without persisting anything yet
+- `toggle_flag` — writes a requested flag state to the configured shared dict
+- `probe_cache` — checks whether an `mlcache` shared dict is reachable
+- `probe_session` — checks whether a session shared dict is reachable
 
 **Integration tests**
-- `tests/basic/` — route description, health, and preview handlers with stock nginx
+- `tests/basic/` — route description, health, system info, real flag write/read-back, and cache/session probe handlers with stock nginx
 
 ## Core abstractions
 
 - `Endpoint` — reusable description of a runtime surface
-- `ok` / `error` / `kv` — tiny response-formatting helpers for deterministic control responses
+- `json_object` / `json_ok` / `json_error` — deterministic JSON response helpers for the operator surface
 - `describe_routes` — stable route listing for documentation and tests
 
 Architectural rule: `control_api` should expose and compose existing runtime-capable module surfaces; it should not replace their core libraries or become a second application framework.
@@ -116,8 +130,20 @@ http {
             js_content main.inspect_flag;
         }
 
-        location /runtime/flag/preview {
-            js_content main.toggle_flag_preview;
+        location /runtime/system {
+            js_content main.system_info;
+        }
+
+        location /runtime/flag/set {
+            js_content main.toggle_flag;
+        }
+
+        location /runtime/cache/probe {
+            js_content main.probe_cache;
+        }
+
+        location /runtime/session/probe {
+            js_content main.probe_session;
         }
     }
 }
@@ -129,14 +155,14 @@ In production this surface should normally be internal-only, protected by networ
 
 ### Read first, write later
 
-The first useful version of a runtime API is not full mutability. It is reliable introspection and previewability.
+The first useful version of a runtime API is not unrestricted mutability. It is reliable introspection and narrow, well-scoped control actions.
 
 So the intended sequencing is:
 
 1. stable route inventory and health
 2. deterministic read endpoints over existing module state
-3. preview endpoints for write operations
-4. authenticated, explicitly supported write endpoints only after the contract settles
+3. authenticated, explicitly supported write endpoints only after the contract settles
+4. broader runtime families only when the ownership lines stay clean
 
 That keeps the module useful early without making unsafe promises.
 
@@ -158,16 +184,16 @@ The runtime surface is valuable only if tooling can rely on it. That means the r
 
 - [x] add reusable endpoint/response modeling helpers
 - [x] keep the first scaffold inspection-focused and deterministic
-- [x] keep write operations in preview mode until the control contract is clearer
+- [x] keep the first surface small and deterministic while the contract settles
 
 ### Phase 2 — compose real module surfaces
 
 Goal: turn the scaffold into a real operator-facing surface by composing the runtime-capable modules that already exist.
 
-- [ ] compose `feature_flags` runtime state with supported read/write contracts
-- [ ] compose `mlcache` and `session` inspection helpers where the ownership lines are clear
-- [ ] add JSON-oriented response surfaces once the text scaffold proves the operator stories
-- [ ] add a stable route/capability inventory that tools can consume programmatically
+- [x] compose `feature_flags` runtime state with supported read/write contracts
+- [x] compose `mlcache` and `session` inspection helpers where the ownership lines are clear
+- [x] add JSON-oriented response surfaces for the operator contract
+- [x] add a stable route/capability inventory that tools can consume programmatically
 
 ### Phase 3 — controlled writes and operator safety
 
@@ -189,10 +215,9 @@ Goal: make `control_api` the operator-facing glue that gives the rest of the eco
 ## TDD plan
 
 - [x] unit-test route inventory and response helpers
-- [x] unit-test preview rendering for runtime flag inspection/write intent
-- [x] integration-test describe/health/preview handlers via `tests/basic/`
-- [ ] unit-test stable JSON response contracts before adding real structured API responses
-- [ ] integration-test composed `feature_flags` / `mlcache` / `session` read surfaces
+- [x] unit-test stable JSON response contracts
+- [x] integration-test describe/health/flag/probe handlers via `tests/basic/`
+- [x] integration-test composed `feature_flags` / `mlcache` / `session` read surfaces
 - [ ] integration-test authenticated/operator-safe write paths once they exist
 
 ## Verification checklist
@@ -200,4 +225,12 @@ Goal: make `control_api` the operator-facing glue that gives the rest of the eco
 - [x] `bun scripts/test.js control_api`
 - [x] `bun test modules/control_api/tests/basic/do.test.js`
 - [x] `bun run build:module control_api`
-- [ ] integration proof against one real runtime-backed module surface (`feature_flags` first)
+- [x] integration proof against real runtime-backed module surfaces (`feature_flags`, `mlcache`, `session`)
+
+## Current HTTP contract
+
+- `GET /runtime/describe` returns plain-text route inventory.
+- `GET /runtime/health` and `GET /runtime/system` return `200` JSON payloads.
+- `GET /runtime/flag` and `GET /runtime/cache|session/probe` return `400` JSON errors when required query params are missing.
+- `GET /runtime/flag?name=...` returns `200` with either an ok payload or an error payload when the named flag is absent.
+- `GET /runtime/flag/set?...` returns `200` JSON describing the written flag state.

@@ -38,9 +38,21 @@ describe("control_api — runtime API", () => {
     expect(body.service).toBe("control_api");
   });
 
+  test("system_info returns JSON runtime details", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/system`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("ok");
+    expect(body.module).toBe("control_api");
+    expect(body.version).toBe("0.1.0");
+    expect(Number(body.now_ms)).toBeGreaterThan(0);
+  });
+
   test("inspect_flag returns error for unknown flag", async () => {
     const res = await fetch(`${TEST_URL}/runtime/flag?name=unknown_flag`);
     expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
     const body = JSON.parse(await res.text());
     expect(body.status).toBe("error");
     expect(body.message).toContain("unknown_flag");
@@ -49,6 +61,7 @@ describe("control_api — runtime API", () => {
   test("inspect_flag requires name param", async () => {
     const res = await fetch(`${TEST_URL}/runtime/flag`);
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
     const body = JSON.parse(await res.text());
     expect(body.status).toBe("error");
   });
@@ -58,6 +71,7 @@ describe("control_api — runtime API", () => {
       `${TEST_URL}/runtime/flag/set?name=dark_mode&enabled=1&pct=50`,
     );
     expect(setRes.status).toBe(200);
+    expect(setRes.headers.get("content-type")).toContain("application/json");
     const setBody = JSON.parse(await setRes.text());
     expect(setBody.status).toBe("ok");
     expect(setBody.action).toBe("set");
@@ -77,15 +91,36 @@ describe("control_api — runtime API", () => {
   test("probe_cache reaches the configured shared dict", async () => {
     const res = await fetch(`${TEST_URL}/runtime/cache/probe?dict=feature_flags`);
     expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
     const body = JSON.parse(await res.text());
     expect(body.status).toBe("ok");
     expect(body.dict).toBe("feature_flags");
     expect(body.reachable).toBe("true");
   });
 
+  test("probe_cache requires dict param", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/cache/probe`);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("error");
+    expect(body.message).toContain("dict");
+  });
+
+  test("probe_session reaches the configured shared dict", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/session/probe?dict=sessions`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("ok");
+    expect(body.session_dict).toBe("sessions");
+    expect(body.reachable).toBe("true");
+  });
+
   test("probe_session rejects missing dict param", async () => {
     const res = await fetch(`${TEST_URL}/runtime/session/probe`);
     expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
     const body = JSON.parse(await res.text());
     expect(body.status).toBe("error");
     expect(body.message).toContain("dict");
