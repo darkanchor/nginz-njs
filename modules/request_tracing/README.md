@@ -120,7 +120,7 @@ http {
 
 **Integration tests**
 - `tests/basic/` — 3 scenarios: header propagation, structured log path, session correlation
-- `tests/workflow/` — 4 scenarios: traced workflow composition, stable trace header propagation, named traced enrich recipe emission, and observational enrich failure reporting
+- `tests/workflow/` — 5 scenarios: traced workflow composition, stable trace header propagation, named traced enrich recipe emission, observational enrich failure reporting, and true transport-failure span recording (`status = 0`)
 - `tests/requestid/` — native requestid integration, structured log emission, and correlation log path (`make` required)
 
 ## Cross-module composition
@@ -222,7 +222,7 @@ Goal: make tracing feel native to the rest of the repo by wiring the existing re
 
 - [x] `bun scripts/test.js request_tracing` — 15 unit tests pass
 - [x] `bun test modules/request_tracing/tests/basic/do.test.js` — 3 integration tests pass
-- [x] `bun test modules/request_tracing/tests/workflow/do.test.js` — 4 traced workflow integration tests pass
+- [x] `bun test modules/request_tracing/tests/workflow/do.test.js` — 5 traced workflow integration tests pass
 - [x] `bun test modules/request_tracing/tests/requestid/do.test.js` — native requestid integration passes (`make` required)
 
 ## Limitations

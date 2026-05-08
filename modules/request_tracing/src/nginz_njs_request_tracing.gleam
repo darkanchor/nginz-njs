@@ -132,10 +132,17 @@ fn traced_workflow(r: HTTPRequest) -> Promise(Nil) {
 fn traced_enrich(r: HTTPRequest) -> Promise(Nil) {
   let ctx = read_context(r)
   let headers = propagate.propagation_headers(ctx)
-  let named_steps = [
-    #("auth", pipeline.subrequest_step("/internal/auth")),
-    #("profile", pipeline.subrequest_step("/internal/profile")),
-  ]
+  let named_steps = case http.get_variable(r, "trace_fail_transport_url") {
+    Ok(url) if url != "" -> [
+      #("auth", pipeline.subrequest_step("/internal/auth")),
+      #("profile", pipeline.subrequest_step("/internal/profile")),
+      #("transport_fail", pipeline.fetch_step(url)),
+    ]
+    _ -> [
+      #("auth", pipeline.subrequest_step("/internal/auth")),
+      #("profile", pipeline.subrequest_step("/internal/profile")),
+    ]
+  }
   use #(traced_ctx, _results) <- promise.await(record.trace_run_parallel(
     ctx,
     r,

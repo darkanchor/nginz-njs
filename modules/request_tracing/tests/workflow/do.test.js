@@ -64,4 +64,25 @@ describe("request_tracing — traced_workflow", () => {
     expect(profileSpan.status).toBe(500);
     expect(profileSpan.success).toBe(false);
   });
+
+  test("traced_enrich records true Failed steps with status 0", async () => {
+    const res = await fetch(`${TEST_URL}/traced-enrich-transport-failing/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-request-id")).toBe(
+      "trace-enrich-transport-failing-001",
+    );
+
+    const body = JSON.parse(await res.text());
+    expect(body.trace_id).toBe("trace-enrich-transport-failing-001");
+    expect(body.spans.map((span) => span.name)).toEqual([
+      "auth",
+      "profile",
+      "transport_fail",
+    ]);
+
+    const failedSpan = body.spans.find((span) => span.name === "transport_fail");
+    expect(failedSpan.status).toBe(0);
+    expect(failedSpan.success).toBe(false);
+  });
 });
