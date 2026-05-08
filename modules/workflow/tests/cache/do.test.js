@@ -22,25 +22,25 @@ describe("workflow — cached_step", () => {
 
   test("first request hits upstream and returns its body", async () => {
     const res = await fetch(`${TEST_URL}/cached-workflow`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.text()).toBe("upstream-response");
   });
 
-  test("second request is served from cache (same body)", async () => {
+  test("second request preserves upstream status when served from cache", async () => {
     const res = await fetch(`${TEST_URL}/cached-workflow`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.text()).toBe("upstream-response");
   });
 
   test("stale-while-refresh first request returns upstream body", async () => {
     const res = await fetch(`${TEST_URL}/stale-demo`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.text()).toBe("upstream-response");
   });
 
-  test("stale-while-refresh second request returns body (hit or stale)", async () => {
+  test("stale-while-refresh second request preserves upstream status", async () => {
     const res = await fetch(`${TEST_URL}/stale-demo`);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(await res.text()).toBe("upstream-response");
   });
 });

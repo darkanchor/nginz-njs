@@ -209,11 +209,11 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - **No runtime policy reload.** Policy rules are compiled into the njs bundle. A policy change requires rebuilding and `nginx -s reload`. Hot-patching is not supported by the njs module system.
 - `jwt_check` / `enriched_jwt_check` depend on `$jwt_claim_*` variables set by the nginz native JWT module. Signature verification is the native layer's job.
 
-## Open upstream enabler: njs PR #1044
+## Upstream enabler: njs PR #1044
 
-There is an open upstream njs PR (`nginx/njs#1044`) proposing `js_access` plus request-body readers such as `readRequestText()`, `readRequestJSON()`, and `readRequestForm()`.
+Upstream njs PR `nginx/njs#1044` has merged. It adds `js_access` plus request-body readers such as `readRequestText()`, `readRequestJSON()`, and `readRequestForm()`, and will become usable here once the next njs release carrying it is available in our toolchain.
 
-If that PR lands substantially as proposed, it would be a **credible future enabler** for `authz`:
+That merged upstream work is a **credible enabler** for `authz`:
 
 - optional access-phase adapters instead of only `js_content`-phase adapters
 - pre-content body-aware authorization rules for JSON requests
@@ -222,9 +222,9 @@ If that PR lands substantially as proposed, it would be a **credible future enab
 
 Important guardrails:
 
-- this is **not available in this repo today**
-- the PR is still open and may change before merge
-- unresolved upstream review items around multipart parsing, docs, and tests mean we should not design current handlers around it yet
+- `js_access` itself will be available as soon as this repo picks up the next njs release that contains PR #1044
+- body-reading methods still need `ngs` bindings before Gleam code in this repo can call them directly
+- this is **not available in this repo today** because the release/tooling uptake has not happened yet
 - it does **not** erase the `ratelimit_policy` lesson about native ACCESS-phase deny-path state and `error_page` redirects; `js_access` would strengthen scripted policy, not magically fix native context loss
 
 ## Phased implementation plan
@@ -266,7 +266,7 @@ Important guardrails:
 
 ### Phase 5 — optional access-phase adapters (future, upstream-dependent)
 
-Goal: if upstream njs lands `js_access` and request-body readers, add access-phase adapters without changing the core policy DSL.
+Goal: once the next njs release lands in this repo and `ngs` exposes the new request-body APIs, add access-phase adapters without changing the core policy DSL.
 
 - [ ] optional `js_access` adapters for pre-content authz decisions
 - [ ] body-aware policy adapters for JSON payloads when access-phase body reads are available upstream

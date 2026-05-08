@@ -8,7 +8,9 @@
 //// The cache key is caller-supplied so the same step can be cached under
 //// different keys (e.g. per-token, per-path, per-user).
 
+import gleam/int
 import gleam/javascript/promise.{type Promise}
+import gleam/string
 import mlcache/model.{
   type CacheConfig, CacheConfig, Hit, Miss, RefreshOnMiss, SharedDict, Stale,
 }
@@ -27,12 +29,17 @@ pub fn cached_step(
 ) -> Step {
   fn(r: HTTPRequest) -> Promise(StepResult) {
     case mc_shared.get(dict_name, key, 0) {
-      Hit(body) -> promise.resolve(Fetched(200, body))
+      Hit(cached) -> promise.resolve(decode_cached_result(cached))
       _ -> {
         use result <- promise.await(step(r))
         case result {
-          Fetched(_, body) -> {
-            mc_shared.put(dict_name, key, body, cache_config(ttl_s, 0))
+          Fetched(status, body) -> {
+            mc_shared.put(
+              dict_name,
+              key,
+              encode_cached_result(status, body),
+              cache_config(ttl_s, 0),
+            )
             promise.resolve(result)
           }
           Failed(_) -> promise.resolve(result)
@@ -57,18 +64,18 @@ pub fn stale_while_refresh(
 ) -> Step {
   fn(r: HTTPRequest) -> Promise(StepResult) {
     case mc_shared.get(dict_name, key, stale_ttl_s) {
-      Hit(body) -> promise.resolve(Fetched(200, body))
-      Stale(body) -> {
-        let stale_result = promise.resolve(Fetched(200, body))
+      Hit(cached) -> promise.resolve(decode_cached_result(cached))
+      Stale(cached) -> {
+        let stale_result = promise.resolve(decode_cached_result(cached))
         // Run refresh but discard the result — the next caller sees fresh data.
         let _ =
           promise.await(step(r), fn(result) {
             case result {
-              Fetched(_, fresh_body) ->
+              Fetched(status, fresh_body) ->
                 mc_shared.put(
                   dict_name,
                   key,
-                  fresh_body,
+                  encode_cached_result(status, fresh_body),
                   cache_config(ttl_s, stale_ttl_s),
                 )
               Failed(_) -> Nil
@@ -80,11 +87,11 @@ pub fn stale_while_refresh(
       Miss -> {
         use result <- promise.await(step(r))
         case result {
-          Fetched(_, body) ->
+          Fetched(status, body) ->
             mc_shared.put(
               dict_name,
               key,
-              body,
+              encode_cached_result(status, body),
               cache_config(ttl_s, stale_ttl_s),
             )
           Failed(_) -> Nil
@@ -102,4 +109,19 @@ fn cache_config(ttl_s: Int, stale_ttl_s: Int) -> CacheConfig {
     ttl_seconds: ttl_s,
     stale_ttl_seconds: stale_ttl_s,
   )
+}
+
+fn encode_cached_result(status: Int, body: String) -> String {
+  int.to_string(status) <> ":" <> body
+}
+
+fn decode_cached_result(cached: String) -> StepResult {
+  case string.split_once(cached, ":") {
+    Error(_) -> Failed("invalid cached workflow entry")
+    Ok(#(status_str, body)) ->
+      case int.parse(status_str) {
+        Ok(status) -> Fetched(status, body)
+        Error(_) -> Failed("invalid cached workflow status")
+      }
+  }
 }

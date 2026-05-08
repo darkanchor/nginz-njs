@@ -73,4 +73,21 @@ describe("control_api — runtime API", () => {
     expect(getBody.enabled).toBe("true");
     expect(getBody.rollout_pct).toBe("50");
   });
+
+  test("probe_cache reaches the configured shared dict", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/cache/probe?dict=feature_flags`);
+    expect(res.status).toBe(200);
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("ok");
+    expect(body.dict).toBe("feature_flags");
+    expect(body.reachable).toBe("true");
+  });
+
+  test("probe_session rejects missing dict param", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/session/probe`);
+    expect(res.status).toBe(400);
+    const body = JSON.parse(await res.text());
+    expect(body.status).toBe("error");
+    expect(body.message).toContain("dict");
+  });
 });

@@ -33,8 +33,8 @@ pub fn endpoints() -> List(Endpoint) {
     ),
     Endpoint(
       name: "toggle_flag",
-      path: "/runtime/flag",
-      method: "POST",
+      path: "/runtime/flag/set",
+      method: "GET",
       description: "Set a feature flag: ?name=<flag>&enabled=<1|0>&pct=<0-100>",
     ),
     Endpoint(
