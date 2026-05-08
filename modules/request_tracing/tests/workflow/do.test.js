@@ -46,4 +46,22 @@ describe("request_tracing — traced_workflow", () => {
     expect(body.span_count).toBe(2);
     expect(body.spans.map((span) => span.name)).toEqual(["auth", "profile"]);
   });
+
+  test("traced_enrich stays observational when a subrequest returns 500", async () => {
+    const res = await fetch(`${TEST_URL}/traced-enrich-failing/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-request-id")).toBe("trace-enrich-failing-001");
+
+    const body = JSON.parse(await res.text());
+    expect(body.trace_id).toBe("trace-enrich-failing-001");
+    expect(body.spans.map((span) => span.name)).toEqual(["auth", "profile"]);
+
+    const authSpan = body.spans.find((span) => span.name === "auth");
+    const profileSpan = body.spans.find((span) => span.name === "profile");
+    expect(authSpan.status).toBe(200);
+    expect(authSpan.success).toBe(true);
+    expect(profileSpan.status).toBe(500);
+    expect(profileSpan.success).toBe(false);
+  });
 });

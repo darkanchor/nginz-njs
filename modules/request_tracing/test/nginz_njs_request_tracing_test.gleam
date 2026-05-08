@@ -101,8 +101,6 @@ pub fn emit_logfmt_test() {
   string.contains(log_line, "span_count=1") |> should.equal(True)
 }
 
-// --- metrics tests ---
-
 pub fn record_result_test() {
   let ctx =
     record.record_result(
@@ -117,6 +115,44 @@ pub fn record_result_test() {
   span.status |> should.equal(502)
   span.success |> should.equal(False)
 }
+
+pub fn record_step_results_ordering_test() {
+  // Verify that record_step_results preserves named_results order.
+  // The implementation uses list.reverse + fold prepend, which cancels out
+  // to produce input-order spans — this test locks that contract.
+  let ctx =
+    trace_model.context("req-1", 1000)
+    |> record.record_step_results(1000, 1100, [
+      #("auth", wf_pipeline.Fetched(200, "ok")),
+      #("profile", wf_pipeline.Fetched(200, "alice")),
+    ])
+  list.length(ctx.spans) |> should.equal(2)
+  let assert [s1, s2] = ctx.spans
+  s1.name |> should.equal("auth")
+  s2.name |> should.equal("profile")
+}
+
+pub fn record_step_results_mixed_test() {
+  // Observational: record_step_results records ALL results including failures.
+  // Failed steps get status 0 and success=False; Fetched steps keep the real
+  // status. No result is dropped or short-circuited.
+  let ctx =
+    trace_model.context("req-1", 1000)
+    |> record.record_step_results(1000, 1100, [
+      #("ok_step", wf_pipeline.Fetched(200, "ok")),
+      #("fail_step", wf_pipeline.Failed("timeout")),
+    ])
+  list.length(ctx.spans) |> should.equal(2)
+  let assert [ok_span, fail_span] = ctx.spans
+  ok_span.name |> should.equal("ok_step")
+  ok_span.success |> should.equal(True)
+  ok_span.status |> should.equal(200)
+  fail_span.name |> should.equal("fail_step")
+  fail_span.success |> should.equal(False)
+  fail_span.status |> should.equal(0)
+}
+
+// --- metrics tests ---
 
 pub fn latency_metric_test() {
   let ctx = trace_model.context("req-1", 1000)

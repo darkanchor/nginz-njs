@@ -37,6 +37,9 @@ pub type MetricError {
   InvalidTagValueChar(String)
   NegativeCounterValue
   InvalidSampleRate
+  InvalidMetricType(String)
+  InvalidMetricValue(String)
+  InvalidTagFormat(String)
 }
 
 pub type Format {
@@ -144,6 +147,9 @@ pub fn error_text(error: MetricError) -> String {
     NegativeCounterValue -> "counter value must be non-negative"
     InvalidSampleRate ->
       "sample rate must be > 0.0 and <= 1.0, got invalid value"
+    InvalidMetricType(reason) -> "invalid metric type: " <> reason
+    InvalidMetricValue(reason) -> "invalid metric value: " <> reason
+    InvalidTagFormat(reason) -> "invalid tag format: " <> reason
   }
 }
 

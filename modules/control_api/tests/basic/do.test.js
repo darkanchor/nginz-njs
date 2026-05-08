@@ -158,4 +158,74 @@ describe("control_api — runtime API", () => {
     expect(res.status).toBe(400);
     expect(await res.text()).toContain("counter value must be non-negative");
   });
+
+  test("render_metric rejects non-integer value", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test&value=abc&type=c`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid metric value");
+    expect(body).toContain("abc");
+  });
+
+  test("render_metric rejects invalid metric type", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test&value=1&type=xyz`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid metric type");
+    expect(body).toContain("xyz");
+  });
+
+  test("render_metric rejects malformed tags", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test&value=1&type=c&tags=bad_tag`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid tag format");
+    expect(body).toContain("bad_tag");
+  });
+
+  test("render_metric rejects invalid sample rate", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test&value=1&type=c&rate=abc`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid metric value");
+    expect(body).toContain("sample rate: abc");
+  });
+
+  test("describe_metric rejects invalid value", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/describe?name=test&value=xyz&type=c`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid metric value");
+    expect(body).toContain("xyz");
+  });
+
+  test("describe_metric rejects invalid metric type", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/describe?name=test&value=1&type=oops`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid metric type");
+    expect(body).toContain("oops");
+  });
+
+  test("describe_metric rejects malformed tags", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/describe?name=test&value=1&type=c&tags=bad_tag`,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("invalid tag format");
+    expect(body).toContain("bad_tag");
+  });
 });

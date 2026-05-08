@@ -86,8 +86,8 @@ The current surface is intentionally small and JSON-first: it proves route inven
 - `session_probe(dict_name)` — shared-dict reachability probe via `session/store`
 
 **`control_api/metrics_handler.gleam`**
-- `render_metric(...)` — builds and renders a StatsD line from query params via the shared `metrics` module
-- `describe_metric(...)` — builds and describes a metric via the shared `metrics` module
+- `render_metric(...)` — builds and renders a StatsD line from query params via the shared `metrics` module; returns `400` with error details when `value`, `type`, `tags`, or `rate` are malformed
+- `describe_metric(...)` — builds and describes a metric via the shared `metrics` module; returns `400` with error details on malformed inputs
 
 **`control_api/router.gleam`**
 - `describe_routes()` — route inventory adapter over `model.describe_all()`
@@ -104,7 +104,7 @@ The current surface is intentionally small and JSON-first: it proves route inven
 - `describe_metric` — describes a metric from query params
 
 **Integration tests**
-- `tests/basic/` — route description, health, system info, real flag write/read-back, cache/session probes, and metrics render/describe handlers with stock nginx
+- `tests/basic/` — route description, health, system info, real flag write/read-back, cache/session probes, and metrics render/describe handlers with malformed-input rejection on the operator-facing metrics endpoints
 
 ## Core abstractions
 
@@ -224,7 +224,7 @@ Goal: move from preview-only actions to a supported internal control plane.
 
 Goal: make `control_api` the operator-facing glue that gives the rest of the ecosystem one coherent control face.
 
-- [x] compose tracing/metrics summaries where the ownership boundary stays clean
+- [x] compose shared metrics render/describe surfaces where the ownership boundary stays clean
 - [ ] expose richer status/control surfaces for CI/CD and orchestration tooling
 - [ ] keep the surface close to the value of nginx-plus `/api/` without pretending unsupported native controls already exist
 
@@ -251,5 +251,5 @@ Goal: make `control_api` the operator-facing glue that gives the rest of the eco
 - `GET /runtime/flag` and `GET /runtime/cache|session/probe` return `400` JSON errors when required query params are missing.
 - `GET /runtime/flag?name=...` returns `200` with either an ok payload or an error payload when the named flag is absent.
 - `GET /runtime/flag/set?...` returns `200` JSON describing the written flag state.
-- `GET /runtime/metrics/render?...` returns a plain-text StatsD line or `400` with a plain-text validation error.
-- `GET /runtime/metrics/describe?...` returns a plain-text metric summary.
+- `GET /runtime/metrics/render?...` returns a plain-text StatsD line or `400` with a plain-text error. Malformed `value` (non-integer), `type` (unrecognized), `tags` (missing `:` separator), or `rate` (non-float) are rejected. Omitted params use stable defaults.
+- `GET /runtime/metrics/describe?...` returns a plain-text metric summary or `400` with a plain-text error. Same validation rules as `render`.

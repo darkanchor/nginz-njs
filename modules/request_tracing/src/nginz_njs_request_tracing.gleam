@@ -123,6 +123,12 @@ fn traced_workflow(r: HTTPRequest) -> Promise(Nil) {
 /// Traced workflow recipe with named enrich-style steps and metric emission.
 /// Demonstrates the reusable `record.trace_run_parallel` helper rather than
 /// manually assembling span pairs in the handler.
+///
+/// Observational: this handler ALWAYS returns 200 with the trace JSON body,
+/// regardless of whether individual steps succeeded or failed. Step failures
+/// are reflected in the span `success` fields within the trace JSON. This is
+/// intentional — `traced_enrich` observes and reports; it does not gate the
+/// response on step outcomes. The caller can inspect spans to detect failures.
 fn traced_enrich(r: HTTPRequest) -> Promise(Nil) {
   let ctx = read_context(r)
   let headers = propagate.propagation_headers(ctx)

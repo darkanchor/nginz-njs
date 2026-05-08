@@ -116,11 +116,11 @@ http {
 - Uses `ngx.now()` via the `ngs` package for start time
 - Emits trace lines via `http.log()` in the content phase
 - `traced_workflow` composes `workflow/pipeline` + `record.record_step_results` to emit span-bearing trace JSON
-- `traced_enrich` composes `record.trace_run_parallel` + `request_tracing/metrics` to emit both structured trace JSON and StatsD-formatted trace metrics
+- `traced_enrich` composes `record.trace_run_parallel` + `request_tracing/metrics` to emit both structured trace JSON and StatsD-formatted trace metrics; it remains observational and returns `200` while surfacing step failures in span status/success fields
 
 **Integration tests**
 - `tests/basic/` — 3 scenarios: header propagation, structured log path, session correlation
-- `tests/workflow/` — 3 scenarios: traced workflow composition, stable trace header propagation, and named traced enrich recipe emission
+- `tests/workflow/` — 4 scenarios: traced workflow composition, stable trace header propagation, named traced enrich recipe emission, and observational enrich failure reporting
 - `tests/requestid/` — native requestid integration, structured log emission, and correlation log path (`make` required)
 
 ## Cross-module composition
@@ -169,7 +169,7 @@ The newer native `prometheus` variables (`$prometheus_requests_total`, `$prometh
 - Pure trace model: `$ngz_request_id` → `TraceContext` → structured output
 - Header propagation: `X-Request-ID` and `X-Trace-ID` for upstream requests
 - Trace emission: JSON and logfmt renderers
-- nginx handlers: traced, traced_with_log, traced_with_session, and traced_workflow variants
+- nginx handlers: traced, traced_with_log, traced_with_session, traced_workflow, and traced_enrich variants
 - Integration test coverage for all handler variants
 
 Future work should stay disciplined: deepen composition through existing modules (`workflow`, `http_client`, `metrics`) without turning this package into a second workflow or metrics system.
@@ -220,14 +220,14 @@ Goal: make tracing feel native to the rest of the repo by wiring the existing re
 
 ## Verification checklist
 
-- [x] `bun scripts/test.js request_tracing` — 12 unit tests pass
+- [x] `bun scripts/test.js request_tracing` — 15 unit tests pass
 - [x] `bun test modules/request_tracing/tests/basic/do.test.js` — 3 integration tests pass
-- [x] `bun test modules/request_tracing/tests/workflow/do.test.js` — 2 traced workflow integration tests pass
+- [x] `bun test modules/request_tracing/tests/workflow/do.test.js` — 4 traced workflow integration tests pass
 - [x] `bun test modules/request_tracing/tests/requestid/do.test.js` — native requestid integration passes (`make` required)
 
 ## Limitations
 
-- **Span recording is only wired in the workflow demo handler.** `traced_workflow` records spans today, but the simpler entry-point handlers still focus on propagation/logging rather than general span capture.
+- **Span recording is only wired in workflow-style handlers.** `traced_workflow` and `traced_enrich` record spans today, but the simpler propagation/logging handlers still do not capture general spans.
 - **No OpenTelemetry format.** Trace emission currently uses custom JSON/logfmt. OTLP-compatible format is a future item.
 - **Log-phase emission is simulated.** The current handler emits trace lines via `http.log()` in the content phase. True log-phase emission requires a `js_log` handler pattern.
 - **Session correlation requires auth_request.** The `traced_with_session` handler expects `$session_subject` to be set by a prior `auth_request` call.

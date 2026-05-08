@@ -27,7 +27,7 @@ Reusable metrics modeling and StatsD/DogStatsD line rendering for nginx written 
 - `MetricType` — `Counter`, `Gauge`, `Timing`, `Set`, `Distribution`
 - `Tag` — explicit metadata for downstream sinks (`name:value` pairs)
 - `Metric` — the reusable instrumentation value with `name`, `value`, `metric_type`, `tags`, `sample_rate`, `namespace`
-- `MetricError` — typed validation errors (`EmptyName`, `InvalidNameChar`, `EmptyTagName`, `InvalidTagNameChar`, `InvalidTagValueChar`, `NegativeCounterValue`, `InvalidSampleRate`)
+- `MetricError` — typed validation errors (`EmptyName`, `InvalidNameChar`, `EmptyTagName`, `InvalidTagNameChar`, `InvalidTagValueChar`, `NegativeCounterValue`, `InvalidSampleRate`, `InvalidMetricType`, `InvalidMetricValue`, `InvalidTagFormat`)
 - `Format` — `StatsD`, `DogStatsD`
 - `validate(metric)` — validates name, tags, counter non-negativity, sample rate in (0.0, 1.0]
 - `render_statsd(metric)` — StatsD line format: `<ns>.<name>:<value>|<type>[|@<rate>]|#<tags>`
