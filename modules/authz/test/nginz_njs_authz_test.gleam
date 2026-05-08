@@ -365,6 +365,77 @@ pub fn query_param_one_of_deny_test() {
   |> should.equal(Deny(403, "query param value mismatch: sort"))
 }
 
+pub fn composed_policy_allow_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/portal"),
+      claims: dict.from_list([
+        #("sub", "user-123"),
+        #("email", "user@example.com"),
+        #("role", "ops,support"),
+      ]),
+      query: dict.from_list([#("view", "summary")]),
+    )
+  ctx_c
+  |> evaluate([
+    all_of([
+      method_in(["GET"]),
+      claim_present("sub"),
+      claim_present("email"),
+      claim_contains_one_of("role", ["admin", "support"]),
+      query_param_one_of("view", ["summary", "full"]),
+    ]),
+  ])
+  |> should.equal(Allow)
+}
+
+pub fn composed_policy_missing_identity_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/portal"),
+      claims: dict.from_list([
+        #("role", "admin"),
+        #("email", "user@example.com"),
+      ]),
+      query: dict.from_list([#("view", "summary")]),
+    )
+  ctx_c
+  |> evaluate([
+    all_of([
+      method_in(["GET"]),
+      claim_present("sub"),
+      claim_present("email"),
+      claim_contains_one_of("role", ["admin", "support"]),
+      query_param_one_of("view", ["summary", "full"]),
+    ]),
+  ])
+  |> should.equal(Deny(401, "missing required claim: sub"))
+}
+
+pub fn composed_policy_query_mismatch_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/portal"),
+      claims: dict.from_list([
+        #("sub", "user-123"),
+        #("email", "user@example.com"),
+        #("role", "admin"),
+      ]),
+      query: dict.from_list([#("view", "detail")]),
+    )
+  ctx_c
+  |> evaluate([
+    all_of([
+      method_in(["GET"]),
+      claim_present("sub"),
+      claim_present("email"),
+      claim_contains_one_of("role", ["admin", "support"]),
+      query_param_one_of("view", ["summary", "full"]),
+    ]),
+  ])
+  |> should.equal(Deny(403, "query param value mismatch: view"))
+}
+
 // deny_401 / deny_403 helpers
 
 pub fn deny_401_test() {
@@ -562,6 +633,40 @@ pub fn waf_pass_denied_no_category_test() {
   |> should.equal(Deny(403, "waf: request denied"))
 }
 
+pub fn composed_policy_waf_denied_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/portal"),
+      claims: dict.from_list([
+        #("sub", "user-123"),
+        #("email", "user@example.com"),
+        #("role", "support"),
+      ]),
+      query: dict.from_list([#("view", "full")]),
+    )
+  let decision =
+    evaluate(ctx_c, [
+      all_of([
+        method_in(["GET"]),
+        claim_present("sub"),
+        claim_present("email"),
+        claim_contains_one_of("role", ["admin", "support"]),
+        query_param_one_of("view", ["summary", "full"]),
+        fn(_ctx) {
+          waf_pass(
+            Some(WafFact(
+              result: WafDenied,
+              rule_id: 10,
+              score: 90,
+              category: "sqli",
+            )),
+          )
+        },
+      ]),
+    ])
+  decision |> should.equal(Deny(403, "waf: request denied [sqli]"))
+}
+
 // --- security: nftset_pass ---
 
 pub fn nftset_pass_none_test() {
@@ -582,4 +687,33 @@ pub fn nftset_pass_deny_with_set_name_test() {
 pub fn nftset_pass_deny_no_set_name_test() {
   nftset_pass(Some(NftsetFact(result: NftsetDeny, matched_set: "")))
   |> should.equal(Deny(403, "nftset: request denied"))
+}
+
+pub fn composed_policy_nftset_denied_test() {
+  let ctx_c =
+    Context(
+      ..ctx("GET", "/api/portal"),
+      claims: dict.from_list([
+        #("sub", "user-123"),
+        #("email", "user@example.com"),
+        #("role", "support"),
+      ]),
+      query: dict.from_list([#("view", "full")]),
+    )
+  let decision =
+    evaluate(ctx_c, [
+      all_of([
+        method_in(["GET"]),
+        claim_present("sub"),
+        claim_present("email"),
+        claim_contains_one_of("role", ["admin", "support"]),
+        query_param_one_of("view", ["summary", "full"]),
+        fn(_ctx) {
+          nftset_pass(
+            Some(NftsetFact(result: NftsetDeny, matched_set: "blocklist")),
+          )
+        },
+      ]),
+    ])
+  decision |> should.equal(Deny(403, "nftset: denied by blocklist"))
 }

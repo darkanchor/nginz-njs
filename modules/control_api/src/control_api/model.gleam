@@ -49,6 +49,18 @@ pub fn endpoints() -> List(Endpoint) {
       method: "GET",
       description: "Probe a session shared dict by ?dict=<name>",
     ),
+    Endpoint(
+      name: "render_metric",
+      path: "/runtime/metrics/render",
+      method: "GET",
+      description: "Render a StatsD metric line from query params",
+    ),
+    Endpoint(
+      name: "describe_metric",
+      path: "/runtime/metrics/describe",
+      method: "GET",
+      description: "Describe a metric from query params",
+    ),
   ]
 }
 

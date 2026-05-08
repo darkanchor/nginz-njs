@@ -125,4 +125,37 @@ describe("control_api — runtime API", () => {
     expect(body.status).toBe("error");
     expect(body.message).toContain("dict");
   });
+
+  test("render_metric returns a StatsD line", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test_requests&value=1&type=c&tags=route:runtime`,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("nginz.test_requests:1|c|#route:runtime");
+  });
+
+  test("render_metric uses stable defaults when params are omitted", async () => {
+    const res = await fetch(`${TEST_URL}/runtime/metrics/render`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("nginz.control_api_metric:1|c");
+  });
+
+  test("describe_metric returns a human-readable summary", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/describe?name=test_requests&value=1&type=c&tags=route:runtime,status:200`,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain("nginz.test_requests");
+    expect(body).toContain("type=c");
+    expect(body).toContain("tags=2");
+  });
+
+  test("render_metric rejects invalid counter values", async () => {
+    const res = await fetch(
+      `${TEST_URL}/runtime/metrics/render?name=test_requests&value=-1&type=c`,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("counter value must be non-negative");
+  });
 });

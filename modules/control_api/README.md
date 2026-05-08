@@ -57,6 +57,7 @@ The long-term shape is closer to a tiny internal control plane than a random set
 - `/runtime/flags/...` — inspect and mutate supported feature flag state
 - `/runtime/cache/...` — inspect cache config/state and perform safe invalidation operations where supported
 - `/runtime/session/...` — inspect lifecycle/config summaries and safe operational facts
+- `/runtime/metrics/...` — render or describe shared metric values through one operator-facing surface
 - `/runtime/tracing/...` — debug/summary surfaces over tracing state when appropriate
 
 The current surface is intentionally small and JSON-first: it proves route inventory, health, flag inspection/write, and cache/session probes before broader control-plane ambitions.
@@ -84,6 +85,10 @@ The current surface is intentionally small and JSON-first: it proves route inven
 **`control_api/session_probe.gleam`**
 - `session_probe(dict_name)` — shared-dict reachability probe via `session/store`
 
+**`control_api/metrics_handler.gleam`**
+- `render_metric(...)` — builds and renders a StatsD line from query params via the shared `metrics` module
+- `describe_metric(...)` — builds and describes a metric via the shared `metrics` module
+
 **`control_api/router.gleam`**
 - `describe_routes()` — route inventory adapter over `model.describe_all()`
 
@@ -95,9 +100,11 @@ The current surface is intentionally small and JSON-first: it proves route inven
 - `toggle_flag` — writes a requested flag state to the configured shared dict
 - `probe_cache` — checks whether an `mlcache` shared dict is reachable
 - `probe_session` — checks whether a session shared dict is reachable
+- `render_metric` — renders a StatsD metric line from query params
+- `describe_metric` — describes a metric from query params
 
 **Integration tests**
-- `tests/basic/` — route description, health, system info, real flag write/read-back, and cache/session probe handlers with stock nginx
+- `tests/basic/` — route description, health, system info, real flag write/read-back, cache/session probes, and metrics render/describe handlers with stock nginx
 
 ## Core abstractions
 
@@ -144,6 +151,14 @@ http {
 
         location /runtime/session/probe {
             js_content main.probe_session;
+        }
+
+        location /runtime/metrics/render {
+            js_content main.render_metric;
+        }
+
+        location /runtime/metrics/describe {
+            js_content main.describe_metric;
         }
     }
 }
@@ -194,6 +209,7 @@ Goal: turn the scaffold into a real operator-facing surface by composing the run
 - [x] compose `mlcache` and `session` inspection helpers where the ownership lines are clear
 - [x] add JSON-oriented response surfaces for the operator contract
 - [x] add a stable route/capability inventory that tools can consume programmatically
+- [x] compose the shared `metrics` module into operator-facing render/describe endpoints
 
 ### Phase 3 — controlled writes and operator safety
 
@@ -208,7 +224,7 @@ Goal: move from preview-only actions to a supported internal control plane.
 
 Goal: make `control_api` the operator-facing glue that gives the rest of the ecosystem one coherent control face.
 
-- [ ] compose tracing/metrics summaries where the ownership boundary stays clean
+- [x] compose tracing/metrics summaries where the ownership boundary stays clean
 - [ ] expose richer status/control surfaces for CI/CD and orchestration tooling
 - [ ] keep the surface close to the value of nginx-plus `/api/` without pretending unsupported native controls already exist
 
@@ -226,6 +242,7 @@ Goal: make `control_api` the operator-facing glue that gives the rest of the eco
 - [x] `bun test modules/control_api/tests/basic/do.test.js`
 - [x] `bun run build:module control_api`
 - [x] integration proof against real runtime-backed module surfaces (`feature_flags`, `mlcache`, `session`)
+- [x] integration proof that `control_api` composes the shared `metrics` module without inventing a second metrics dialect
 
 ## Current HTTP contract
 
@@ -234,3 +251,5 @@ Goal: make `control_api` the operator-facing glue that gives the rest of the eco
 - `GET /runtime/flag` and `GET /runtime/cache|session/probe` return `400` JSON errors when required query params are missing.
 - `GET /runtime/flag?name=...` returns `200` with either an ok payload or an error payload when the named flag is absent.
 - `GET /runtime/flag/set?...` returns `200` JSON describing the written flag state.
+- `GET /runtime/metrics/render?...` returns a plain-text StatsD line or `400` with a plain-text validation error.
+- `GET /runtime/metrics/describe?...` returns a plain-text metric summary.

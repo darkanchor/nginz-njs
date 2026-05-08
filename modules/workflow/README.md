@@ -58,11 +58,12 @@ Subrequest orchestration and `ngx.fetch()`-driven enrichment pipelines for nginx
 - `map_body_demo` — transforms an upstream response body
 - `summary` — returns aggregate success/failure counts for a workflow run
 - `templated_parallel` — runs two subrequests in parallel and hands final JSON shaping to `response_templating`
+- `degraded_parallel` — runs required + optional branches in parallel and returns structured `full` vs `degraded` JSON when only the optional branch falls back; primary failure still wins with 502
 - `cached_workflow` — wraps a subrequest step with read-through caching in `workflow_cache`
 - `stale_demo` — wraps a subrequest step with stale-while-refresh caching semantics
 
 **Integration tests**
-- `tests/basic/` — 10 scenarios covering chain, fetch_chain, sequential, retry, timeout, recovery, first_ok, body mapping, summary, and templated response shaping without native deps
+- `tests/basic/` — 14 scenarios covering chain, fetch_chain, sequential, retry, timeout, recovery, first_ok, body mapping, summary, templated response shaping, and degraded fallback selection without native deps
 - `tests/cache/` — 4 scenarios covering cache hit/miss and stale-while-refresh status/body preservation
 - `tests/enrich/` — 2 fan-out scenarios against native `echoz` backends (`make` required)
 
@@ -141,7 +142,7 @@ Goal: turn the existing orchestration core into the place where response shaping
 - [x] add cache-aware orchestration examples and helpers that pair `workflow` with `mlcache` for read-through and stale-while-refresh composition
 - [x] add response-generation examples showing when `workflow` should hand final shaping to `response_templating` versus `response_transform`
 - [ ] add metrics/tracing instrumentation recipes without baking those concerns into the step algebra itself
-- [ ] integration coverage for degraded fallback selection without coupling to standalone 503 page adapters
+- [x] integration coverage for degraded fallback selection without coupling to standalone 503 page adapters
 - [x] integration coverage for one cache-aware composed workflow
 
 ## TDD plan
@@ -153,12 +154,12 @@ Goal: turn the existing orchestration core into the place where response shaping
 - [x] `tests/enrich/` as optional hybrid-model proof using native modules behind internal locations
 - [x] unit-test circuit-state parsing and circuit-aware wrapper behavior
 - [x] integration-test open / half-open / closed orchestration against native circuit variables
-- [ ] integration-test degraded fallback selection without coupling to standalone 503 page adapters
+- [x] integration-test degraded fallback selection without coupling to standalone 503 page adapters
 
 ## Verification checklist
 
 - [x] `bun scripts/test.js workflow` — 38 unit tests pass
-- [x] `bun test modules/workflow/tests/basic/do.test.js` — 10 basic integration tests pass
+- [x] `bun test modules/workflow/tests/basic/do.test.js` — 14 basic integration tests pass
 - [x] `bun test modules/workflow/tests/cache/do.test.js` — 4 cache-aware integration tests pass
 - [x] `bun test modules/workflow/tests/enrich/do.test.js` — 2 fan-out integration tests pass (`make` required)
 - [x] `bun test modules/workflow/tests/circuit/do.test.js` — circuit-aware orchestration passes (`make` required)

@@ -33,4 +33,17 @@ describe("request_tracing — traced_workflow", () => {
     expect(r1.headers.get("x-request-id")).toBe("trace-workflow-001");
     expect(r2.headers.get("x-request-id")).toBe("trace-workflow-001");
   });
+
+  test("traced_enrich returns JSON trace body with propagated trace headers", async () => {
+    const res = await fetch(`${TEST_URL}/traced-enrich/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("x-request-id")).toBe("trace-enrich-001");
+    expect(res.headers.get("x-trace-id")).toBe("trace-enrich-001");
+
+    const body = JSON.parse(await res.text());
+    expect(body.trace_id).toBe("trace-enrich-001");
+    expect(body.span_count).toBe(2);
+    expect(body.spans.map((span) => span.name)).toEqual(["auth", "profile"]);
+  });
 });

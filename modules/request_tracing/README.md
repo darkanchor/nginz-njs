@@ -53,6 +53,7 @@ The native module owns the hot-path ID generation. This module owns trace propag
 | `main.traced_with_log` | `js_content` | Propagates headers and emits a structured JSON trace log line |
 | `main.traced_with_session` | `js_content` | Propagates headers with session correlation for debugging |
 | `main.traced_workflow` | `js_content` | Runs a small workflow, records step spans, emits a structured trace log line |
+| `main.traced_enrich` | `js_content` | Runs named workflow subrequests through the reusable tracing recipe, returns trace JSON, and emits trace metrics |
 
 ## nginx configuration
 
@@ -107,24 +108,26 @@ http {
 - `record_span(ctx, name, duration_ms, status)` — pipe-friendly span accumulator
 - `record_result(ctx, name, duration_ms, status)` — records a span from an observed step outcome
 - `record_step_results(ctx, start, now, named_results)` — records workflow step outcomes as spans
+- `trace_run_parallel(ctx, r, named_steps)` — reusable recipe that wraps `workflow/pipeline.run_parallel` with named span recording
 
 **`nginz_njs_request_tracing.gleam`** (njs entry point)
-- 4 handlers: `traced`, `traced_with_log`, `traced_with_session`, `traced_workflow`
+- 5 handlers: `traced`, `traced_with_log`, `traced_with_session`, `traced_workflow`, `traced_enrich`
 - Reads `$ngz_request_id` (falls back to `$request_id`, then `"unknown"`)
 - Uses `ngx.now()` via the `ngs` package for start time
 - Emits trace lines via `http.log()` in the content phase
 - `traced_workflow` composes `workflow/pipeline` + `record.record_step_results` to emit span-bearing trace JSON
+- `traced_enrich` composes `record.trace_run_parallel` + `request_tracing/metrics` to emit both structured trace JSON and StatsD-formatted trace metrics
 
 **Integration tests**
 - `tests/basic/` — 3 scenarios: header propagation, structured log path, session correlation
-- `tests/workflow/` — 2 scenarios: traced workflow composition and stable trace header propagation
+- `tests/workflow/` — 3 scenarios: traced workflow composition, stable trace header propagation, and named traced enrich recipe emission
 - `tests/requestid/` — native requestid integration, structured log emission, and correlation log path (`make` required)
 
 ## Cross-module composition
 
 ### workflow — span recording (library and demo handler available)
 
-The `request_tracing/record` module provides `record_result` for wrapping workflow steps, and the `traced_workflow` handler demonstrates that composition end-to-end by recording subrequest results as spans:
+The `request_tracing/record` module provides `record_result` for wrapping workflow steps, and now also provides `trace_run_parallel` as the reusable recipe for named workflow fan-out. The `traced_workflow` and `traced_enrich` handlers demonstrate that composition end-to-end by recording subrequest results as spans:
 
 ```gleam
 import request_tracing/record
@@ -147,7 +150,7 @@ let req = client.new_get("https://api.example.test")
 
 ### metrics — trace emission (library available)
 
-The `request_tracing/metrics` module provides latency and counter metrics. Current entry point handlers do not emit metrics; instrumentation is a future enhancement:
+The `request_tracing/metrics` module provides latency and counter metrics. `traced_enrich` now demonstrates entry-point metric emission by rendering trace latency and request counters through `metrics/line`:
 
 ```gleam
 import request_tracing/metrics as rt_metrics
@@ -189,8 +192,8 @@ Future work should stay disciplined: deepen composition through existing modules
 ### Phase 3 — composition through existing modules (future)
 
 - [x] `traced_workflow` composes `request_tracing/record` for span recording
-- [ ] broaden span recording beyond the workflow demo handler where it adds real value
-- [ ] Entry point handlers compose `request_tracing/metrics` for trace emission
+- [x] broaden span recording beyond the workflow demo handler where it adds real value
+- [x] Entry point handlers compose `request_tracing/metrics` for trace emission
 - [ ] Trace context propagation through `http_client` middleware
 - [ ] OpenTelemetry-compatible trace format emission
 - [ ] Log-phase emission via `js_log` handler pattern

@@ -238,6 +238,14 @@ fn templated_parallel_template() -> template_model.Template {
   )
 }
 
+fn degraded_parallel_template() -> template_model.Template {
+  template_model.json(
+    "workflow_degraded_parallel_json",
+    "{\"mode\":\"{{mode}}\",\"primary\":\"{{primary}}\",\"secondary\":\"{{secondary}}\"}",
+    ["mode", "primary", "secondary"],
+  )
+}
+
 /// Run two subrequests in parallel and hand final response shaping to
 /// response_templating instead of assembling the JSON directly in workflow.
 fn templated_parallel(r: HTTPRequest) -> Promise(Nil) {
@@ -269,6 +277,61 @@ fn templated_parallel(r: HTTPRequest) -> Promise(Nil) {
           promise.resolve(Nil)
         }
       }
+  }
+}
+
+/// Run a required primary subrequest and a degradable secondary subrequest in
+/// parallel. The secondary path falls back to a stable replacement body when it
+/// fails, but primary failure still returns 502 so degraded mode stays explicit.
+/// The mode flag is derived from the requested secondary behavior rather than
+/// from the fallback body literal.
+fn degraded_parallel(r: HTTPRequest) -> Promise(Nil) {
+  let primary_path = case http.get_variable(r, "arg_primary") {
+    Ok("fail") -> "/internal/upstream-a-fail"
+    _ -> "/internal/upstream-a"
+  }
+  let secondary_should_fail = case http.get_variable(r, "arg_secondary") {
+    Ok("fail") -> True
+    _ -> False
+  }
+  let secondary_path = case http.get_variable(r, "arg_secondary") {
+    Ok("fail") -> "/internal/upstream-b-fail"
+    _ -> "/internal/upstream-b"
+  }
+  let primary_step =
+    subrequest_step(primary_path)
+    |> map_step(fail_on_status)
+  let secondary_step =
+    subrequest_step(secondary_path)
+    |> map_step(fail_on_status)
+    |> recover(fn(_reason) { Fetched(200, "fallback-secondary") })
+  use results <- promise.await(run_parallel(r, [primary_step, secondary_step]))
+  case results {
+    [Fetched(_, primary), Fetched(_, secondary)] -> {
+      let mode = case secondary_should_fail {
+        True -> "degraded"
+        False -> "full"
+      }
+      let body =
+        degraded_parallel_template()
+        |> template_render.render([
+          template_render.binding("mode", mode),
+          template_render.binding("primary", primary),
+          template_render.binding("secondary", secondary),
+        ])
+      let _ = http.set_headers_out(r, "Content-Type", "application/json")
+      http.return_text(r, 200, body)
+      promise.resolve(Nil)
+    }
+    [Failed(reason), _] -> {
+      let _ = http.log(r, "workflow: degraded_parallel failed — " <> reason)
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+    _ -> {
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
   }
 }
 
@@ -390,6 +453,7 @@ pub fn exports() -> JsObject {
   |> ngx.merge("map_body_demo", map_body_demo)
   |> ngx.merge("summary", summary)
   |> ngx.merge("templated_parallel", templated_parallel)
+  |> ngx.merge("degraded_parallel", degraded_parallel)
   |> ngx.merge("circuit_state", circuit_state)
   |> ngx.merge("circuit_trip", circuit_trip)
   |> ngx.merge("circuit_probe", circuit_probe)

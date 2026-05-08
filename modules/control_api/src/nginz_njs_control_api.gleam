@@ -1,9 +1,11 @@
 import control_api/flag
+import control_api/metrics_handler
 import control_api/probe
 import control_api/response
 import control_api/router
 import control_api/session_probe
 import gleam/int
+import metrics/line
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 
@@ -89,6 +91,41 @@ fn probe_session(r: HTTPRequest) -> Nil {
   }
 }
 
+/// Render a StatsD line from query params using the shared metrics module.
+/// Supported params: ?name=&value=&type=&ns=&rate=&tags=
+fn render_metric(r: HTTPRequest) -> Nil {
+  case
+    metrics_handler.render_metric(
+      read_var(r, "arg_name", "control_api_metric"),
+      read_var(r, "arg_value", "1"),
+      read_var(r, "arg_type", "c"),
+      read_var(r, "arg_ns", "nginz"),
+      read_var(r, "arg_rate", "1.0"),
+      read_var(r, "arg_tags", ""),
+    )
+  {
+    Ok(line) -> http.return_text(r, 200, line)
+    Error(err) -> http.return_text(r, 400, line.describe_error(err))
+  }
+}
+
+/// Return a human-readable description of a metric built from query params.
+fn describe_metric(r: HTTPRequest) -> Nil {
+  case
+    metrics_handler.describe_metric(
+      read_var(r, "arg_name", "control_api_metric"),
+      read_var(r, "arg_value", "1"),
+      read_var(r, "arg_type", "c"),
+      read_var(r, "arg_ns", "nginz"),
+      read_var(r, "arg_rate", "1.0"),
+      read_var(r, "arg_tags", ""),
+    )
+  {
+    Ok(text) -> http.return_text(r, 200, text)
+    Error(err) -> http.return_text(r, 400, line.describe_error(err))
+  }
+}
+
 fn read_var(r: HTTPRequest, name: String, default: String) -> String {
   case http.get_variable(r, name) {
     Ok(v) if v != "" -> v
@@ -110,4 +147,6 @@ pub fn exports() -> JsObject {
   |> ngx.merge("toggle_flag", toggle_flag)
   |> ngx.merge("probe_cache", probe_cache)
   |> ngx.merge("probe_session", probe_session)
+  |> ngx.merge("render_metric", render_metric)
+  |> ngx.merge("describe_metric", describe_metric)
 }

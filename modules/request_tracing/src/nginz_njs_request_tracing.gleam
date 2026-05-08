@@ -3,9 +3,11 @@
 //// and emits structured trace logs.
 
 import gleam/javascript/promise.{type Promise}
+import metrics/line
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
 import request_tracing/emit
+import request_tracing/metrics as tracing_metrics
 import request_tracing/model.{type TraceContext}
 import request_tracing/propagate
 import request_tracing/record
@@ -118,10 +120,47 @@ fn traced_workflow(r: HTTPRequest) -> Promise(Nil) {
   promise.resolve(Nil)
 }
 
+/// Traced workflow recipe with named enrich-style steps and metric emission.
+/// Demonstrates the reusable `record.trace_run_parallel` helper rather than
+/// manually assembling span pairs in the handler.
+fn traced_enrich(r: HTTPRequest) -> Promise(Nil) {
+  let ctx = read_context(r)
+  let headers = propagate.propagation_headers(ctx)
+  let named_steps = [
+    #("auth", pipeline.subrequest_step("/internal/auth")),
+    #("profile", pipeline.subrequest_step("/internal/profile")),
+  ]
+  use #(traced_ctx, _results) <- promise.await(record.trace_run_parallel(
+    ctx,
+    r,
+    named_steps,
+  ))
+  let now = ngx.now()
+  let trace_json = emit.json(traced_ctx, now)
+  let latency_line =
+    tracing_metrics.latency_metric(
+      traced_ctx,
+      model.total_duration(traced_ctx, now),
+      "/traced-enrich/",
+    )
+    |> line.render_statsd
+  let traced_count_line =
+    tracing_metrics.traced_counter(traced_ctx, "/traced-enrich/")
+    |> line.render_statsd
+  set_headers(r, headers)
+  let _ = http.set_headers_out(r, "Content-Type", "application/json")
+  let _ = http.log(r, "request_tracing: traced_enrich — " <> trace_json)
+  let _ = http.log(r, "request_tracing: metric — " <> latency_line)
+  let _ = http.log(r, "request_tracing: metric — " <> traced_count_line)
+  http.return_text(r, 200, trace_json)
+  promise.resolve(Nil)
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("traced", traced)
   |> ngx.merge("traced_with_log", traced_with_log)
   |> ngx.merge("traced_with_session", traced_with_session)
   |> ngx.merge("traced_workflow", traced_workflow)
+  |> ngx.merge("traced_enrich", traced_enrich)
 }

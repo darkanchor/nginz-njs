@@ -89,4 +89,36 @@ describe("workflow — chain subrequest", () => {
       upstream_b: "response-b",
     });
   });
+
+  test("degraded-parallel returns full JSON when both branches succeed", async () => {
+    const res = await fetch(`${TEST_URL}/degraded-parallel`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({
+      mode: "full",
+      primary: "response-a",
+      secondary: "response-b",
+    });
+  });
+
+  test("degraded-parallel returns degraded JSON when only the secondary branch fails", async () => {
+    const res = await fetch(`${TEST_URL}/degraded-parallel?secondary=fail`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.json()).toEqual({
+      mode: "degraded",
+      primary: "response-a",
+      secondary: "fallback-secondary",
+    });
+  });
+
+  test("degraded-parallel returns 502 when the required primary branch fails", async () => {
+    const res = await fetch(`${TEST_URL}/degraded-parallel?primary=fail`);
+    expect(res.status).toBe(502);
+  });
+
+  test("degraded-parallel still returns 502 when both branches fail because primary is required", async () => {
+    const res = await fetch(`${TEST_URL}/degraded-parallel?primary=fail&secondary=fail`);
+    expect(res.status).toBe(502);
+  });
 });

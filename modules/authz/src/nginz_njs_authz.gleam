@@ -1,8 +1,10 @@
 import authz/cache.{Hit, Miss}
 import authz/claims
 import authz/enrich
+import authz/identity
 import authz/oidc
 import authz/policy.{type Context, type Decision, Allow, Context, Deny}
+import authz/query
 import authz/remote
 import authz/security
 import gleam/dict
@@ -218,6 +220,41 @@ fn enriched_oidc_check(r: HTTPRequest) -> Nil {
   }
 }
 
+/// Canonical composed policy-shell example: merge JWT + OIDC identity, extract
+/// request query params, and combine those facts with phase-safe WAF / nftset
+/// allow-path rules in one policy tree. Designed for auth_request-style use,
+/// so it injects X-Authz-* headers for the downstream location.
+fn enriched_composed_check(r: HTTPRequest) -> Nil {
+  let waf_fact = security.waf_from_request(r)
+  let nftset_fact = security.nftset_from_request(r)
+  let identity_ctx =
+    identity.with_jwt_and_oidc(r, ["role", "sub"], ["sub", "email", "name"])
+  let ctx = Context(..identity_ctx, query: query.from_request(r, ["view"]))
+  let rules = [
+    policy.all_of([
+      policy.method_in(["GET"]),
+      policy.claim_present("sub"),
+      policy.claim_present("email"),
+      policy.claim_contains_one_of("role", ["admin", "support"]),
+      policy.query_param_one_of("view", ["summary", "full"]),
+      security.waf_pass_rule(r),
+      security.nftset_pass_rule(r),
+    ]),
+  ]
+  let decision = policy.evaluate(ctx, rules)
+  let _ = enrich.inject_status(r, decision)
+  let _ = enrich.inject_claims(r, ctx)
+  let _ = enrich.inject_waf_facts(r, waf_fact)
+  let _ = enrich.inject_nftset_facts(r, nftset_fact)
+  case decision {
+    Allow -> http.return_code(r, 204)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: composed denied — " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
 /// Allow-path WAF check: reads $waf_result and passes the request if the WAF
 /// result is "allowed" or "dryrun". Returns 204 on pass, 403 on deny.
 /// Does not reconstruct WAF deny decisions from error_page redirects.
@@ -303,6 +340,7 @@ pub fn exports() -> JsObject {
   |> ngx.merge("session_gate", session_gate)
   |> ngx.merge("oidc_check", oidc_check)
   |> ngx.merge("enriched_oidc_check", enriched_oidc_check)
+  |> ngx.merge("enriched_composed_check", enriched_composed_check)
   |> ngx.merge("waf_check", waf_check)
   |> ngx.merge("enriched_waf_check", enriched_waf_check)
   |> ngx.merge("nftset_check", nftset_check)
