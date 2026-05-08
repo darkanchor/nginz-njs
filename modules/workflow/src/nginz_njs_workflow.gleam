@@ -3,6 +3,7 @@ import gleam/list
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
+import workflow/cache as wf_cache
 import workflow/circuit
 import workflow/merge
 import workflow/pipeline.{
@@ -227,6 +228,52 @@ fn summary(r: HTTPRequest) -> Promise(Nil) {
   promise.resolve(Nil)
 }
 
+// --- Cached step demos ---
+
+/// Wrap a subrequest step with read-through caching in the `workflow_cache`
+/// shared dict. On a hit the body is served from cache; on a miss the
+/// subrequest runs normally and the result is stored for 10 seconds.
+///
+fn cached_workflow(r: HTTPRequest) -> Promise(Nil) {
+  let step =
+    subrequest_step("/internal/upstream")
+    |> wf_cache.cached_step("workflow_cache", "cached_workflow_key", 10)
+  use result <- promise.await(step(r))
+  case result {
+    Fetched(status, body) -> {
+      http.return_text(r, status, body)
+      promise.resolve(Nil)
+    }
+    Failed(reason) -> {
+      let _ = http.log(r, "workflow: cached_workflow failed — " <> reason)
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+  }
+}
+
+/// Wrap a subrequest step with stale-while-refresh semantics in the
+/// `workflow_cache` shared dict. Stale values are served immediately for
+/// up to 5 extra seconds while a background refresh runs.
+///
+fn stale_demo(r: HTTPRequest) -> Promise(Nil) {
+  let step =
+    subrequest_step("/internal/upstream")
+    |> wf_cache.stale_while_refresh("workflow_cache", "stale_demo_key", 10, 5)
+  use result <- promise.await(step(r))
+  case result {
+    Fetched(status, body) -> {
+      http.return_text(r, status, body)
+      promise.resolve(Nil)
+    }
+    Failed(reason) -> {
+      let _ = http.log(r, "workflow: stale_demo failed — " <> reason)
+      http.return_code(r, 502)
+      promise.resolve(Nil)
+    }
+  }
+}
+
 // --- Circuit state reader ---
 
 /// Read `$ngz_circuit_state` and return it as a plain-text response.
@@ -301,4 +348,6 @@ pub fn exports() -> JsObject {
   |> ngx.merge("circuit_state", circuit_state)
   |> ngx.merge("circuit_trip", circuit_trip)
   |> ngx.merge("circuit_probe", circuit_probe)
+  |> ngx.merge("cached_workflow", cached_workflow)
+  |> ngx.merge("stale_demo", stale_demo)
 }

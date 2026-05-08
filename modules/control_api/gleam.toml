@@ -12,6 +12,7 @@ gleam_javascript = ">= 0.11.0 and < 2.0.0"
 ngs = ">= 1.0.9 and < 2.0.0"
 nginz_njs_feature_flags = { path = "../feature_flags" }
 nginz_njs_mlcache = { path = "../mlcache" }
+nginz_njs_session = { path = "../session" }
 
 [dev-dependencies]
 gleeunit = ">= 1.0.0 and < 2.0.0"

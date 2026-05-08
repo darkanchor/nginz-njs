@@ -2,6 +2,7 @@ import control_api/flag
 import control_api/probe
 import control_api/response
 import control_api/router
+import control_api/session_probe
 import gleam/int
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
@@ -74,6 +75,20 @@ fn probe_cache(r: HTTPRequest) -> Nil {
   }
 }
 
+/// Probe whether a named session shared dict is reachable.
+/// Reads ?dict=<dict_name> from the request.
+fn probe_session(r: HTTPRequest) -> Nil {
+  let dict_name = read_var(r, "arg_dict", "")
+  case dict_name {
+    "" ->
+      response.json_error("missing required query param: dict")
+      |> json_response(r, 400, _)
+    name ->
+      session_probe.session_probe(name)
+      |> json_response(r, 200, _)
+  }
+}
+
 fn read_var(r: HTTPRequest, name: String, default: String) -> String {
   case http.get_variable(r, name) {
     Ok(v) if v != "" -> v
@@ -94,4 +109,5 @@ pub fn exports() -> JsObject {
   |> ngx.merge("inspect_flag", inspect_flag)
   |> ngx.merge("toggle_flag", toggle_flag)
   |> ngx.merge("probe_cache", probe_cache)
+  |> ngx.merge("probe_session", probe_session)
 }

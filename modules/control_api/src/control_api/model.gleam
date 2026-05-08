@@ -43,6 +43,12 @@ pub fn endpoints() -> List(Endpoint) {
       method: "GET",
       description: "Probe a shared dict by ?dict=<name>",
     ),
+    Endpoint(
+      name: "session_probe",
+      path: "/runtime/session/probe",
+      method: "GET",
+      description: "Probe a session shared dict by ?dict=<name>",
+    ),
   ]
 }
 

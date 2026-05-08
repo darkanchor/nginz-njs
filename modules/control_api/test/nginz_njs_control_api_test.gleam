@@ -12,7 +12,7 @@ pub fn main() {
 pub fn endpoints_count_test() {
   model.endpoints()
   |> list.length
-  |> should.equal(6)
+  |> should.equal(7)
 }
 
 pub fn json_ok_test() {
