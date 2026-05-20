@@ -66,6 +66,26 @@ describe("authz — js_access phase handlers", () => {
       });
       expect(res.status).toBe(200);
     });
+
+    test("rejects malformed JSON instead of falling through to content", async () => {
+      const res = await fetch(`${TEST_URL}/access/json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not-json",
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).not.toBe("ok");
+    });
+
+    test("fails closed on missing required-field configuration", async () => {
+      const res = await fetch(`${TEST_URL}/access/json-misconfig`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read", resource: "orders" }),
+      });
+      expect(res.status).toBe(500);
+      expect(await res.text()).not.toBe("ok");
+    });
   });
 
   describe("access_form_check (async, form body)", () => {
@@ -88,6 +108,27 @@ describe("authz — js_access phase handlers", () => {
         body: form.toString(),
       });
       expect(res.status).toBe(401);
+    });
+
+    test("rejects unsupported form payloads instead of falling through to content", async () => {
+      const res = await fetch(`${TEST_URL}/access/form`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "action=read",
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).not.toBe("ok");
+    });
+
+    test("fails closed on missing required-field configuration", async () => {
+      const form = new URLSearchParams({ action: "read", resource: "orders" });
+      const res = await fetch(`${TEST_URL}/access/form-misconfig`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+      expect(res.status).toBe(500);
+      expect(await res.text()).not.toBe("ok");
     });
   });
 });

@@ -25,6 +25,12 @@ pub type NftsetFact {
   NftsetFact(result: NftsetResult, matched_set: String)
 }
 
+/// Canonical normalized view of the native security signals authz consumes.
+/// This keeps WAF and nftset facts bundled together for composed policy shells.
+pub type SecurityFacts {
+  SecurityFacts(waf: Option(WafFact), nftset: Option(NftsetFact))
+}
+
 fn read_int_var(r: HTTPRequest, name: String) -> Int {
   case http.get_variable(r, name) {
     Ok(s) -> result.unwrap(int.parse(s), 0)
@@ -80,6 +86,11 @@ pub fn nftset_from_request(r: HTTPRequest) -> Option(NftsetFact) {
   }
 }
 
+/// Read all phase-safe native security facts used by authz from one request.
+pub fn from_request(r: HTTPRequest) -> SecurityFacts {
+  SecurityFacts(waf: waf_from_request(r), nftset: nftset_from_request(r))
+}
+
 /// Allow-path WAF check: pass if the WAF result is allowed or dry-run.
 /// Dry-run allows the request through for observation only.
 /// Does not reconstruct deny decisions from error_page or access-phase context.
@@ -107,6 +118,18 @@ pub fn nftset_pass(fact: Option(NftsetFact)) -> Decision {
   }
 }
 
+/// Apply the documented allow-path composition over the bundled security facts.
+/// WAF deny wins first; if WAF allows/dry-runs, nftset decides next.
+pub fn pass(facts: SecurityFacts) -> Decision {
+  case facts {
+    SecurityFacts(waf:, nftset:) ->
+      case waf_pass(waf) {
+        Allow -> nftset_pass(nftset)
+        deny -> deny
+      }
+  }
+}
+
 /// Rule factory: reads WAF facts from the request and applies the allow-path check.
 /// Compose into all_of / any_of policy trees alongside claim and path rules.
 pub fn waf_pass_rule(r: HTTPRequest) -> Rule {
@@ -116,4 +139,9 @@ pub fn waf_pass_rule(r: HTTPRequest) -> Rule {
 /// Rule factory: reads nftset facts from the request and applies the allow-path check.
 pub fn nftset_pass_rule(r: HTTPRequest) -> Rule {
   fn(_ctx: Context) -> Decision { nftset_pass(nftset_from_request(r)) }
+}
+
+/// Rule factory for the canonical bundled security-signal check.
+pub fn pass_rule(r: HTTPRequest) -> Rule {
+  fn(_ctx: Context) -> Decision { pass(from_request(r)) }
 }

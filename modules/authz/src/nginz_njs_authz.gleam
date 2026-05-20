@@ -2,6 +2,7 @@ import authz/body
 import authz/cache.{Hit, Miss}
 import authz/claims
 import authz/enrich
+import authz/facts
 import authz/identity
 import authz/oidc
 import authz/policy.{type Context, type Decision, Allow, Context, Deny}
@@ -12,6 +13,7 @@ import gleam/dict
 import gleam/int
 import gleam/javascript/promise.{type Promise}
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
@@ -99,6 +101,106 @@ fn apply_decision(
       http.return_code(r, status)
       promise.resolve(Nil)
     }
+  }
+}
+
+fn apply_access_decision(
+  r: HTTPRequest,
+  decision: Decision,
+  log_prefix: String,
+) -> Promise(Nil) {
+  case decision {
+    Allow -> promise.resolve(Nil)
+    Deny(status, reason) -> {
+      let _ = http.log(r, log_prefix <> reason)
+      http.return_code(r, status)
+      promise.resolve(Nil)
+    }
+  }
+}
+
+fn configured_body_policy(
+  r: HTTPRequest,
+  adapter: String,
+) -> Option(#(List(String), String)) {
+  let field_names = case http.get_variable(r, "authz_body_fields") {
+    Ok(v) ->
+      v
+      |> string.split(",")
+      |> list.map(string.trim)
+      |> list.filter(fn(s) { s != "" })
+    Error(_) -> []
+  }
+  let required = case http.get_variable(r, "authz_body_required") {
+    Ok(v) -> string.trim(v)
+    Error(_) -> ""
+  }
+  case field_names, required {
+    [], _ -> {
+      let _ =
+        http.log(
+          r,
+          "authz: access "
+            <> adapter
+            <> " misconfigured — no body fields configured",
+        )
+      http.return_code(r, 500)
+      None
+    }
+    _, "" -> {
+      let _ =
+        http.log(
+          r,
+          "authz: access "
+            <> adapter
+            <> " misconfigured — authz_body_required not set",
+        )
+      http.return_code(r, 500)
+      None
+    }
+    _, _ ->
+      case list.contains(field_names, required) {
+        True -> Some(#(field_names, required))
+        False -> {
+          let _ =
+            http.log(
+              r,
+              "authz: access "
+                <> adapter
+                <> " misconfigured — required field missing from authz_body_fields",
+            )
+          http.return_code(r, 500)
+          None
+        }
+      }
+  }
+}
+
+fn session_subject_claim(r: HTTPRequest) -> Result(Option(String), Decision) {
+  let dict_name = case http.get_variable(r, "session_dict") {
+    Ok(v) -> v
+    Error(_) -> ""
+  }
+  case dict_name {
+    "" -> Error(Deny(503, "session dict not configured"))
+    dict_name ->
+      case http.get_header_in(r, "cookie") {
+        Error(_) -> Ok(None)
+        Ok(cookie_header) ->
+          case
+            session_cookie.read_id(
+              cookie_header,
+              session_model.default_descriptor().cookie.name,
+            )
+          {
+            Error(_) -> Ok(None)
+            Ok(sid) ->
+              case session_store.load(dict_name, sid) {
+                Error(_) -> Ok(None)
+                Ok(subject) -> Ok(Some(subject))
+              }
+          }
+      }
   }
 }
 
@@ -228,8 +330,7 @@ fn enriched_oidc_check(r: HTTPRequest) -> Nil {
 /// allow-path rules in one policy tree. Designed for auth_request-style use,
 /// so it injects X-Authz-* headers for the downstream location.
 fn enriched_composed_check(r: HTTPRequest) -> Nil {
-  let waf_fact = security.waf_from_request(r)
-  let nftset_fact = security.nftset_from_request(r)
+  let security_facts = security.from_request(r)
   let identity_ctx =
     identity.with_jwt_and_oidc(r, ["role", "sub"], ["sub", "email", "name"])
   let ctx = Context(..identity_ctx, query: query.from_request(r, ["view"]))
@@ -240,20 +341,77 @@ fn enriched_composed_check(r: HTTPRequest) -> Nil {
       policy.claim_present("email"),
       policy.claim_contains_one_of("role", ["admin", "support"]),
       policy.query_param_one_of("view", ["summary", "full"]),
-      security.waf_pass_rule(r),
-      security.nftset_pass_rule(r),
+      security.pass_rule(r),
     ]),
   ]
   let decision = policy.evaluate(ctx, rules)
   let _ = enrich.inject_status(r, decision)
   let _ = enrich.inject_claims(r, ctx)
-  let _ = enrich.inject_waf_facts(r, waf_fact)
-  let _ = enrich.inject_nftset_facts(r, nftset_fact)
+  let _ = enrich.inject_security_facts(r, security_facts)
   case decision {
     Allow -> http.return_code(r, 204)
     Deny(status, reason) -> {
       let _ = http.log(r, "authz: composed denied — " <> reason)
       http.return_code(r, status)
+    }
+  }
+}
+
+/// Canonical Milestone 3 async policy shell: one decision flow over JWT + OIDC
+/// identity, query extraction, phase-safe WAF / nftset facts, optional session
+/// identity, and a remote OPA step. Emits structured X-Authz-* headers so
+/// auth_request callers or response modules can consume the decision context.
+fn enriched_milestone3_check(r: HTTPRequest) -> Promise(Nil) {
+  let endpoint = case http.get_variable(r, "authz_opa_url") {
+    Ok(v) -> v
+    Error(_) -> ""
+  }
+  let security_facts = security.from_request(r)
+  let base_identity =
+    identity.with_jwt_and_oidc(r, ["role", "sub"], ["sub", "email", "name"])
+  case session_subject_claim(r) {
+    Error(decision) -> {
+      let ctx = Context(..base_identity, query: query.from_request(r, ["view"]))
+      let _ = enrich.inject_claims(r, ctx)
+      let _ =
+        enrich.inject_facts(
+          r,
+          facts.compose(ctx, decision, security_facts, None),
+        )
+      apply_decision(r, decision, "authz: milestone3 denied — ")
+    }
+    Ok(subject) -> {
+      let merged_claims = case subject {
+        None -> base_identity.claims
+        Some(value) ->
+          dict.insert(base_identity.claims, "session_subject", value)
+      }
+      let ctx =
+        Context(
+          ..base_identity,
+          claims: merged_claims,
+          query: query.from_request(r, ["view"]),
+        )
+      let rules = [
+        policy.to_async(policy.method_in(["GET"])),
+        policy.to_async(policy.claim_present("sub")),
+        policy.to_async(policy.claim_present("email")),
+        policy.to_async(
+          policy.claim_contains_one_of("role", ["admin", "support"]),
+        ),
+        policy.to_async(policy.query_param_one_of("view", ["summary", "full"])),
+        policy.to_async(policy.claim_present("session_subject")),
+        policy.to_async(security.pass_rule(r)),
+        fn(ctx) { remote.opa_allow(ctx, endpoint, 2000) },
+      ]
+      use decision <- promise.await(policy.async_evaluate(ctx, rules))
+      let _ = enrich.inject_claims(r, ctx)
+      let _ =
+        enrich.inject_facts(
+          r,
+          facts.compose(ctx, decision, security_facts, subject),
+        )
+      apply_decision(r, decision, "authz: milestone3 denied — ")
     }
   }
 }
@@ -354,32 +512,25 @@ fn access_check(r: HTTPRequest) -> Nil {
 /// field names to extract) and $authz_body_required (required field name).
 /// On allow: passes to content handler. On deny: returns 4xx immediately.
 fn access_json_check(r: HTTPRequest) -> Promise(Nil) {
-  use json_obj <- promise.await(http.read_request_json(r))
-  let field_names = case http.get_variable(r, "authz_body_fields") {
-    Ok(v) ->
-      v
-      |> string.split(",")
-      |> list.map(string.trim)
-      |> list.filter(fn(s) { s != "" })
-    Error(_) -> []
-  }
-  let required = case http.get_variable(r, "authz_body_required") {
-    Ok(v) -> v
-    Error(_) -> ""
-  }
-  let body_dict = body.from_json(json_obj, field_names)
-  let ctx = Context(..context_from_request(r), body: body_dict)
-  let rules = case required {
-    "" -> []
-    field -> [policy.body_param_present(field)]
-  }
-  case policy.evaluate(ctx, rules) {
-    Allow -> promise.resolve(Nil)
-    Deny(status, reason) -> {
-      let _ = http.log(r, "authz: access json denied — " <> reason)
-      http.return_code(r, status)
-      promise.resolve(Nil)
-    }
+  case configured_body_policy(r, "json") {
+    None -> promise.resolve(Nil)
+    Some(#(field_names, required)) ->
+      http.read_request_json(r)
+      |> promise.await(fn(json_obj) {
+        let body_dict = body.from_json(json_obj, field_names)
+        let ctx = Context(..context_from_request(r), body: body_dict)
+        policy.evaluate(ctx, [policy.body_param_present(required)])
+        |> apply_access_decision(r, _, "authz: access json denied — ")
+      })
+      |> promise.rescue(fn(error) {
+        let _ =
+          http.log(
+            r,
+            "authz: access json read failed — " <> string.inspect(error),
+          )
+        http.return_code(r, 400)
+        Nil
+      })
   }
 }
 
@@ -387,32 +538,25 @@ fn access_json_check(r: HTTPRequest) -> Promise(Nil) {
 /// named fields, then applies a body-param policy. Reads $authz_body_fields
 /// (comma-separated field names) and $authz_body_required (required field).
 fn access_form_check(r: HTTPRequest) -> Promise(Nil) {
-  use form <- promise.await(http.read_request_form(r))
-  let field_names = case http.get_variable(r, "authz_body_fields") {
-    Ok(v) ->
-      v
-      |> string.split(",")
-      |> list.map(string.trim)
-      |> list.filter(fn(s) { s != "" })
-    Error(_) -> []
-  }
-  let required = case http.get_variable(r, "authz_body_required") {
-    Ok(v) -> v
-    Error(_) -> ""
-  }
-  let body_dict = body.from_form(form, field_names)
-  let ctx = Context(..context_from_request(r), body: body_dict)
-  let rules = case required {
-    "" -> []
-    field -> [policy.body_param_present(field)]
-  }
-  case policy.evaluate(ctx, rules) {
-    Allow -> promise.resolve(Nil)
-    Deny(status, reason) -> {
-      let _ = http.log(r, "authz: access form denied — " <> reason)
-      http.return_code(r, status)
-      promise.resolve(Nil)
-    }
+  case configured_body_policy(r, "form") {
+    None -> promise.resolve(Nil)
+    Some(#(field_names, required)) ->
+      http.read_request_form(r)
+      |> promise.await(fn(form) {
+        let body_dict = body.from_form(form, field_names)
+        let ctx = Context(..context_from_request(r), body: body_dict)
+        policy.evaluate(ctx, [policy.body_param_present(required)])
+        |> apply_access_decision(r, _, "authz: access form denied — ")
+      })
+      |> promise.rescue(fn(error) {
+        let _ =
+          http.log(
+            r,
+            "authz: access form read failed — " <> string.inspect(error),
+          )
+        http.return_code(r, 400)
+        Nil
+      })
   }
 }
 
@@ -433,6 +577,7 @@ pub fn exports() -> JsObject {
   |> ngx.merge("oidc_check", oidc_check)
   |> ngx.merge("enriched_oidc_check", enriched_oidc_check)
   |> ngx.merge("enriched_composed_check", enriched_composed_check)
+  |> ngx.merge("enriched_milestone3_check", enriched_milestone3_check)
   |> ngx.merge("waf_check", waf_check)
   |> ngx.merge("enriched_waf_check", enriched_waf_check)
   |> ngx.merge("nftset_check", nftset_check)

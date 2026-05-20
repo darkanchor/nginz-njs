@@ -1,9 +1,11 @@
 import authz/policy.{type Context, type Decision, Allow, Deny}
 import authz/security.{
-  type NftsetFact, type WafFact, NftsetDeny, WafDenied, WafDryRun,
+  type NftsetFact, type SecurityFacts, type WafFact, NftsetDeny, WafDenied,
+  WafDryRun,
 }
 import gleam/dict
 import gleam/int
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import njs/http.{type HTTPRequest}
@@ -22,7 +24,19 @@ pub fn inject_status(r: HTTPRequest, decision: Decision) -> HTTPRequest {
 /// Claim names are title-cased, e.g. `role` → `X-Authz-Role`.
 pub fn inject_claims(r: HTTPRequest, ctx: Context) -> HTTPRequest {
   dict.fold(ctx.claims, r, fn(r, key, value) {
-    http.set_headers_out(r, "X-Authz-" <> title_case(key), value)
+    http.set_headers_out(r, "X-Authz-" <> header_name(key), value)
+  })
+}
+
+/// Inject arbitrary structured authz facts as X-Authz-* response headers.
+/// Keys use underscore-separated names which become title-cased header parts:
+/// `decision_code` -> `X-Authz-Decision-Code`.
+pub fn inject_facts(
+  r: HTTPRequest,
+  values: dict.Dict(String, String),
+) -> HTTPRequest {
+  dict.fold(values, r, fn(acc, key, value) {
+    http.set_headers_out(acc, "X-Authz-" <> header_name(key), value)
   })
 }
 
@@ -67,6 +81,26 @@ pub fn inject_nftset_facts(
       |> http.set_headers_out("X-Authz-Nftset-Matched-Set", matched_set)
     }
   }
+}
+
+/// Inject the bundled security facts in one call.
+pub fn inject_security_facts(
+  r: HTTPRequest,
+  facts: SecurityFacts,
+) -> HTTPRequest {
+  case facts {
+    security.SecurityFacts(waf:, nftset:) ->
+      r
+      |> inject_waf_facts(waf)
+      |> inject_nftset_facts(nftset)
+  }
+}
+
+fn header_name(s: String) -> String {
+  s
+  |> string.split("_")
+  |> list.map(title_case)
+  |> string.join("-")
 }
 
 fn title_case(s: String) -> String {

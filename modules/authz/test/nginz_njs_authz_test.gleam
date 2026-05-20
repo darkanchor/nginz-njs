@@ -1,3 +1,4 @@
+import authz/facts
 import authz/metrics
 import authz/policy.{
   type Context, Allow, Context, Deny, all_of, any_of, async_evaluate, body_param,
@@ -7,8 +8,8 @@ import authz/policy.{
   remote_addr_in, require_header, to_async,
 }
 import authz/security.{
-  NftsetAllow, NftsetDeny, NftsetFact, WafAllowed, WafDenied, WafDryRun, WafFact,
-  nftset_pass, waf_pass,
+  NftsetAllow, NftsetDeny, NftsetFact, SecurityFacts, WafAllowed, WafDenied,
+  WafDryRun, WafFact, nftset_pass, pass, waf_pass,
 }
 import gleam/dict
 import gleam/javascript/promise
@@ -792,4 +793,48 @@ pub fn body_param_composed_with_method_test() {
     ]),
   ])
   |> should.equal(Allow)
+}
+
+pub fn security_pass_waf_deny_wins_test() {
+  pass(SecurityFacts(
+    waf: Some(WafFact(result: WafDenied, rule_id: 7, score: 90, category: "xss")),
+    nftset: Some(NftsetFact(result: NftsetDeny, matched_set: "blocklist")),
+  ))
+  |> should.equal(Deny(403, "waf: request denied [xss]"))
+}
+
+pub fn security_pass_nftset_runs_after_waf_allow_test() {
+  pass(SecurityFacts(
+    waf: Some(WafFact(result: WafDryRun, rule_id: 7, score: 90, category: "xss")),
+    nftset: Some(NftsetFact(result: NftsetDeny, matched_set: "blocklist")),
+  ))
+  |> should.equal(Deny(403, "nftset: denied by blocklist"))
+}
+
+pub fn facts_compose_includes_structured_fields_test() {
+  let ctx_f =
+    Context(..ctx("GET", "/api"), query: dict.from_list([#("view", "summary")]))
+  let fact_map =
+    facts.compose(
+      ctx_f,
+      Deny(401, "missing required claim: session_subject"),
+      SecurityFacts(
+        waf: Some(WafFact(
+          result: WafDryRun,
+          rule_id: 42,
+          score: 70,
+          category: "sqli",
+        )),
+        nftset: Some(NftsetFact(result: NftsetAllow, matched_set: "")),
+      ),
+      Some("alice"),
+    )
+  dict.get(fact_map, "status") |> should.equal(Ok("deny"))
+  dict.get(fact_map, "decision_code") |> should.equal(Ok("401"))
+  dict.get(fact_map, "reason")
+  |> should.equal(Ok("missing required claim: session_subject"))
+  dict.get(fact_map, "query_view") |> should.equal(Ok("summary"))
+  dict.get(fact_map, "session_subject") |> should.equal(Ok("alice"))
+  dict.get(fact_map, "waf_result") |> should.equal(Ok("dryrun"))
+  dict.get(fact_map, "nftset_result") |> should.equal(Ok("allow"))
 }
