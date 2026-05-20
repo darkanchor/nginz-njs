@@ -1,3 +1,4 @@
+import authz/body
 import authz/cache.{Hit, Miss}
 import authz/claims
 import authz/enrich
@@ -10,6 +11,7 @@ import authz/security
 import gleam/dict
 import gleam/int
 import gleam/javascript/promise.{type Promise}
+import gleam/list
 import gleam/string
 import njs/http.{type HTTPRequest}
 import njs/ngx.{type JsObject}
@@ -25,6 +27,7 @@ fn context_from_request(r: HTTPRequest) -> Context {
     headers: http.headers_in(r),
     claims: dict.new(),
     query: dict.new(),
+    body: dict.new(),
   )
 }
 
@@ -328,6 +331,95 @@ fn session_gate(r: HTTPRequest) -> Nil {
   }
 }
 
+/// js_access — access-phase equivalent of `check`. On allow: returns without
+/// calling anything so nginx advances to the content phase (proxy_pass, etc.).
+/// On deny: calls r.return(status) immediately before content phase runs.
+/// Use over auth_request when no subrequest round-trip is needed.
+fn access_check(r: HTTPRequest) -> Nil {
+  let ctx = context_from_request(r)
+  let rules = [
+    policy.method_in(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]),
+  ]
+  case policy.evaluate(ctx, rules) {
+    Allow -> Nil
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: access denied — " <> reason)
+      http.return_code(r, status)
+    }
+  }
+}
+
+/// js_access — reads JSON body, extracts named fields, then applies a
+/// body-param policy. Reads $authz_body_fields (comma-separated list of
+/// field names to extract) and $authz_body_required (required field name).
+/// On allow: passes to content handler. On deny: returns 4xx immediately.
+fn access_json_check(r: HTTPRequest) -> Promise(Nil) {
+  use json_obj <- promise.await(http.read_request_json(r))
+  let field_names = case http.get_variable(r, "authz_body_fields") {
+    Ok(v) ->
+      v
+      |> string.split(",")
+      |> list.map(string.trim)
+      |> list.filter(fn(s) { s != "" })
+    Error(_) -> []
+  }
+  let required = case http.get_variable(r, "authz_body_required") {
+    Ok(v) -> v
+    Error(_) -> ""
+  }
+  let body_dict = body.from_json(json_obj, field_names)
+  let ctx = Context(..context_from_request(r), body: body_dict)
+  let rules = case required {
+    "" -> []
+    field -> [policy.body_param_present(field)]
+  }
+  case policy.evaluate(ctx, rules) {
+    Allow -> promise.resolve(Nil)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: access json denied — " <> reason)
+      http.return_code(r, status)
+      promise.resolve(Nil)
+    }
+  }
+}
+
+/// js_access — reads form body (application/x-www-form-urlencoded), extracts
+/// named fields, then applies a body-param policy. Reads $authz_body_fields
+/// (comma-separated field names) and $authz_body_required (required field).
+fn access_form_check(r: HTTPRequest) -> Promise(Nil) {
+  use form <- promise.await(http.read_request_form(r))
+  let field_names = case http.get_variable(r, "authz_body_fields") {
+    Ok(v) ->
+      v
+      |> string.split(",")
+      |> list.map(string.trim)
+      |> list.filter(fn(s) { s != "" })
+    Error(_) -> []
+  }
+  let required = case http.get_variable(r, "authz_body_required") {
+    Ok(v) -> v
+    Error(_) -> ""
+  }
+  let body_dict = body.from_form(form, field_names)
+  let ctx = Context(..context_from_request(r), body: body_dict)
+  let rules = case required {
+    "" -> []
+    field -> [policy.body_param_present(field)]
+  }
+  case policy.evaluate(ctx, rules) {
+    Allow -> promise.resolve(Nil)
+    Deny(status, reason) -> {
+      let _ = http.log(r, "authz: access form denied — " <> reason)
+      http.return_code(r, status)
+      promise.resolve(Nil)
+    }
+  }
+}
+
+fn ok_response(r: HTTPRequest) -> Nil {
+  http.return_text(r, 200, "ok")
+}
+
 pub fn exports() -> JsObject {
   ngx.object()
   |> ngx.merge("check", check)
@@ -344,4 +436,8 @@ pub fn exports() -> JsObject {
   |> ngx.merge("waf_check", waf_check)
   |> ngx.merge("enriched_waf_check", enriched_waf_check)
   |> ngx.merge("nftset_check", nftset_check)
+  |> ngx.merge("access_check", access_check)
+  |> ngx.merge("access_json_check", access_json_check)
+  |> ngx.merge("access_form_check", access_form_check)
+  |> ngx.merge("ok_response", ok_response)
 }

@@ -1,9 +1,10 @@
 import authz/metrics
 import authz/policy.{
-  type Context, Allow, Context, Deny, all_of, any_of, async_evaluate,
-  claim_contains, claim_contains_one_of, claim_one_of, claim_present, deny_401,
-  deny_403, evaluate, has_claim, header_one_of, method_in, not_, path_prefix,
-  query_param, query_param_one_of, remote_addr_in, require_header, to_async,
+  type Context, Allow, Context, Deny, all_of, any_of, async_evaluate, body_param,
+  body_param_one_of, body_param_present, claim_contains, claim_contains_one_of,
+  claim_one_of, claim_present, deny_401, deny_403, evaluate, has_claim,
+  header_one_of, method_in, not_, path_prefix, query_param, query_param_one_of,
+  remote_addr_in, require_header, to_async,
 }
 import authz/security.{
   NftsetAllow, NftsetDeny, NftsetFact, WafAllowed, WafDenied, WafDryRun, WafFact,
@@ -28,6 +29,7 @@ fn ctx(method: String, path: String) -> Context {
     headers: dict.new(),
     claims: dict.new(),
     query: dict.new(),
+    body: dict.new(),
   )
 }
 
@@ -716,4 +718,78 @@ pub fn composed_policy_nftset_denied_test() {
       ]),
     ])
   decision |> should.equal(Deny(403, "nftset: denied by blocklist"))
+}
+
+// body_param — access-phase body field rules
+
+pub fn body_param_allow_test() {
+  let ctx_b =
+    Context(..ctx("POST", "/api"), body: dict.from_list([#("action", "read")]))
+  ctx_b
+  |> evaluate([body_param("action", "read")])
+  |> should.equal(Allow)
+}
+
+pub fn body_param_deny_mismatch_test() {
+  let ctx_b =
+    Context(..ctx("POST", "/api"), body: dict.from_list([#("action", "write")]))
+  ctx_b
+  |> evaluate([body_param("action", "read")])
+  |> should.equal(Deny(403, "body param value mismatch: action"))
+}
+
+pub fn body_param_deny_missing_test() {
+  ctx("POST", "/api")
+  |> evaluate([body_param("action", "read")])
+  |> should.equal(Deny(403, "missing required body param: action"))
+}
+
+pub fn body_param_one_of_allow_test() {
+  let ctx_b =
+    Context(..ctx("POST", "/api"), body: dict.from_list([#("action", "write")]))
+  ctx_b
+  |> evaluate([body_param_one_of("action", ["read", "write"])])
+  |> should.equal(Allow)
+}
+
+pub fn body_param_one_of_deny_test() {
+  let ctx_b =
+    Context(
+      ..ctx("POST", "/api"),
+      body: dict.from_list([#("action", "delete")]),
+    )
+  ctx_b
+  |> evaluate([body_param_one_of("action", ["read", "write"])])
+  |> should.equal(Deny(403, "body param value mismatch: action"))
+}
+
+pub fn body_param_present_allow_test() {
+  let ctx_b =
+    Context(..ctx("POST", "/api"), body: dict.from_list([#("user_id", "u42")]))
+  ctx_b
+  |> evaluate([body_param_present("user_id")])
+  |> should.equal(Allow)
+}
+
+pub fn body_param_present_deny_test() {
+  ctx("POST", "/api")
+  |> evaluate([body_param_present("user_id")])
+  |> should.equal(Deny(401, "missing required body param: user_id"))
+}
+
+pub fn body_param_composed_with_method_test() {
+  let ctx_b =
+    Context(
+      ..ctx("POST", "/api"),
+      body: dict.from_list([#("action", "read"), #("resource", "orders")]),
+    )
+  ctx_b
+  |> evaluate([
+    all_of([
+      method_in(["POST"]),
+      body_param_one_of("action", ["read", "list"]),
+      body_param_present("resource"),
+    ]),
+  ])
+  |> should.equal(Allow)
 }

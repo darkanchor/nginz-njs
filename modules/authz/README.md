@@ -268,23 +268,16 @@ async_evaluate(ctx, rules)  // Promise(Decision), short-circuits on Deny
 - **No runtime policy reload.** Policy rules are compiled into the njs bundle. A policy change requires rebuilding and `nginx -s reload`. Hot-patching is not supported by the njs module system.
 - `jwt_check` / `enriched_jwt_check` depend on `$jwt_claim_*` variables set by the nginz native JWT module. Signature verification is the native layer's job.
 
-## Upstream enabler: njs PR #1044
+## Upstream enabler: njs PR #1044 (landed)
 
-Upstream njs PR `nginx/njs#1044` has merged. It adds `js_access` plus request-body readers such as `readRequestText()`, `readRequestJSON()`, and `readRequestForm()`, and will become usable here once the next njs release carrying it is available in our toolchain.
+Upstream njs PR `nginx/njs#1044` has merged and is now active in `submodules/njs`. It adds `js_access` plus request-body readers (`readRequestText()`, `readRequestJSON()`, `readRequestForm()`). The `ngs` package exposes these as `http.read_request_json`, `http.read_request_form`, and `http.read_request_text`.
 
-That merged upstream work is a **credible enabler** for `authz`:
+**Phase 5 is implemented** using these APIs. Key behavioral invariants discovered during implementation:
 
-- optional access-phase adapters instead of only `js_content`-phase adapters
-- pre-content body-aware authorization rules for JSON requests
-- pre-content form-aware gates for classic login / CSRF-style flows
-- fewer nginx workarounds when the policy decision really belongs before proxying
-
-Important guardrails:
-
-- `js_access` itself will be available as soon as this repo picks up the next njs release that contains PR #1044
-- body-reading methods still need `ngs` bindings before Gleam code in this repo can call them directly
-- this is **not available in this repo today** because the release/tooling uptake has not happened yet
-- it does **not** erase the `ratelimit_policy` lesson about native ACCESS-phase deny-path state and `error_page` redirects; `js_access` would strengthen scripted policy, not magically fix native context loss
+- In `js_access`, **allow = return `Nil`** (sync) or **`promise.resolve(Nil)`** (async). Do not call anything to signal allow.
+- **`http.done(r)` crashes in access phase** — it is only valid in body/header filter context. Calling it from `js_access` throws `TypeError: cannot set done while not filtering`.
+- **`return 200 "..."` in nginx config bypasses `js_access`** — `return` runs in the REWRITE phase, before ACCESS. Always pair `js_access` with `js_content` (or `proxy_pass`, `echozn`) as the content handler.
+- It does **not** erase the `ratelimit_policy` lesson about native ACCESS-phase deny-path state and `error_page` redirects; `js_access` strengthens scripted policy but does not fix native context loss.
 
 ## Phased implementation plan
 
@@ -323,14 +316,17 @@ Important guardrails:
 - [x] reusable RBAC recipe documentation (path+method+role policy tree)
 - [ ] document optional jwt module wiring end-to-end
 
-### Phase 5 — optional access-phase adapters (future, upstream-dependent)
+### Phase 5 — access-phase adapters ✓
 
-Goal: once the next njs release lands in this repo and `ngs` exposes the new request-body APIs, add access-phase adapters without changing the core policy DSL.
+Goal: add access-phase adapters without changing the core policy DSL. Unblocked once njs PR #1044 landed in the submodule and `ngs` exposed request-body APIs.
 
-- [ ] optional `js_access` adapters for pre-content authz decisions
-- [ ] body-aware policy adapters for JSON payloads when access-phase body reads are available upstream
-- [ ] form-aware policy adapters for login / CSRF gates when upstream `readRequestForm()` stabilizes
-- [ ] native integration coverage proving phase behavior before claiming these paths as supported
+- [x] `js_access` sync adapter (`access_check`) — method/header/claim gates before content phase
+- [x] `js_access` async JSON body adapter (`access_json_check`) — body params extracted via `$authz_body_fields`, required field checked via `$authz_body_required`
+- [x] `js_access` async form body adapter (`access_form_check`) — same pattern for `application/x-www-form-urlencoded`
+- [x] `Context.body` field (mirrors `Context.query`) populated from JSON/form body via `authz/body`
+- [x] body rules: `body_param`, `body_param_one_of`, `body_param_present`
+- [x] integration test coverage (`tests/access/`) for all three handlers including allow/deny paths
+- [x] documented behavioral invariant: allow = return `Nil`/`promise.resolve(Nil)`; never call `http.done()` from `js_access`
 
 ### Phase 6 — absorb broader security and identity adapters ✓
 

@@ -11,6 +11,34 @@ The Gleam bindings to the njs runtime are provided by the [`ngs`](https://hex.pm
 ## Skills
 - Nginx is a subtle piece of software, it might take substantial effort to learn a hard fact when debug its core and native modules, as you learnt, append to an existing skill or create one
 
+## Critical nginx config trap: `return` bypasses ACCESS phase
+
+**Never use `return` as the content handler when `js_access` (or any ACCESS-phase module) is present.**
+
+nginx's `return` directive runs in the REWRITE phase — *before* ACCESS. Writing:
+
+```nginx
+location /api {
+    js_access main.check;
+    return 200 "ok";   # ← REWRITE phase: js_access NEVER runs
+}
+```
+
+makes `js_access` completely inert. The response is sent before the ACCESS phase begins.
+
+**Always use a CONTENT-phase directive:**
+
+```nginx
+location /api {
+    js_access main.check;
+    js_content main.ok_response;   # ← CONTENT phase: runs after ACCESS
+}
+```
+
+Safe content-phase directives: `js_content`, `proxy_pass`, `echozn`, `try_files`, static file serving.
+
+This has burned us multiple times. See also: `nginz-njs-troubleshoot` skill, Pattern 9 and Pattern 13.
+
 ## Core design rule: modules are building blocks
 
 Every module in this repo has two distinct surfaces:

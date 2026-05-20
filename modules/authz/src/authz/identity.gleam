@@ -15,6 +15,7 @@ pub fn from_request(r: HTTPRequest) -> Context {
     headers: http.headers_in(r),
     claims: dict.new(),
     query: dict.new(),
+    body: dict.new(),
   )
 }
 

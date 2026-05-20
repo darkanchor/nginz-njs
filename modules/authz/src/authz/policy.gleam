@@ -17,6 +17,7 @@ pub type Context {
     headers: Dict(String, String),
     claims: Dict(String, String),
     query: Dict(String, String),
+    body: Dict(String, String),
   )
 }
 
@@ -233,6 +234,38 @@ pub fn query_param_one_of(key: String, allowed: List(String)) -> Rule {
           False -> Deny(403, "query param value mismatch: " <> key)
         }
       Error(_) -> Deny(403, "missing required query param: " <> key)
+    }
+  }
+}
+
+pub fn body_param(key: String, value: String) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.body, key) {
+      Ok(v) if v == value -> Allow
+      Ok(_) -> Deny(403, "body param value mismatch: " <> key)
+      Error(_) -> Deny(403, "missing required body param: " <> key)
+    }
+  }
+}
+
+pub fn body_param_one_of(key: String, allowed: List(String)) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.body, key) {
+      Ok(v) ->
+        case list.contains(allowed, v) {
+          True -> Allow
+          False -> Deny(403, "body param value mismatch: " <> key)
+        }
+      Error(_) -> Deny(403, "missing required body param: " <> key)
+    }
+  }
+}
+
+pub fn body_param_present(key: String) -> Rule {
+  fn(ctx: Context) -> Decision {
+    case dict.get(ctx.body, key) {
+      Ok(_) -> Allow
+      Error(_) -> Deny(401, "missing required body param: " <> key)
     }
   }
 }
