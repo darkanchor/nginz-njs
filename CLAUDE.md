@@ -25,6 +25,16 @@ Treat the first surface as the primary design target. Modules are meant to be us
 
 Design implication: do not build modules as isolated handler scripts when the logic should be reusable. Build the reusable Gleam core first, then adapt it through `exports()`. Example: `workflow` should consume `http_client` as a Gleam building block instead of owning a separate fetch abstraction.
 
+## Setup
+
+### Submodule initialization (required before first `make`)
+
+`submodules/nginz` contains its own nested submodules (nginx, njs, quickjs). A plain `git submodule update --init` won't reach them. Always use recursive init:
+
+```bash
+git submodule update --init --recursive
+```
+
 ## Commands
 
 ### Unit tests (pure Gleam, no nginx needed)
