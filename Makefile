@@ -24,6 +24,7 @@ nginx: libquickjs.a nginz-packages
 		--with-http_v2_module \
 		--with-http_v3_module \
 		--with-stream \
+		--with-compat \
 		--add-module=../njs/nginx \
 		$(NGINZ_MODULE_FLAGS) \
 		--with-cc-opt="-I ../quickjs" \
