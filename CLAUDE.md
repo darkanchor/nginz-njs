@@ -110,7 +110,7 @@ bun run clean                          # removes dist/, modules/*/build/, module
 modules/<name>/src/*.gleam
   → gleam build --target javascript
   → modules/<name>/build/dev/javascript/<name>/<name>.mjs
-  → Bun.build() (bundle, ESM, browser target)
+  → Bun.build() (bundle, ESM, target "node" + njs builtins external)
   → append: export default exports()     ← njs js_import needs the default export
   → dist/<name>/njs/app.js   (loaded by nginx via js_import)
   → dist/<name>/nginx.conf   (copied from module root)

@@ -65,7 +65,21 @@ async function buildModule(dirName) {
     outdir: join(distDir, "njs"),
     naming: "app.js",
     format: "esm",
-    target: "browser",
+    // njs (QuickJS) is its own runtime, NOT node and NOT a browser.
+    // - target "browser" makes Bun inline broken polyfills: it swaps njs's
+    //   native global `Buffer` for a node:buffer shim that THROWS at runtime,
+    //   and replaces `import qs from 'querystring'` with a wrong browser
+    //   polyfill. target "node" leaves Buffer as a global and emits njs
+    //   builtins as bare specifiers (`querystring`, not `node:querystring`),
+    //   which njs resolves to its own modules. This mirrors how the upstream
+    //   `ngs` package configures esbuild.
+    target: "node",
+    // Mark njs builtin modules external so the bundler never tries to resolve
+    // or polyfill them. Node-builtin names (crypto/fs/zlib/querystring/buffer)
+    // are already external under target "node"; `xml` is njs-only and would
+    // otherwise fail to resolve, so it must be listed explicitly. Keep this in
+    // sync with `external` in ngs's src/ngs_ffi.mjs.
+    external: ["querystring", "crypto", "fs", "xml", "zlib", "buffer"],
     minify: false,
   });
 
