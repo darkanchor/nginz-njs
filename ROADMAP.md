@@ -71,7 +71,7 @@ Roadmap integration:
 
 **Status:** complete  
 **Lua analog:** `lua-resty-casbin`  
-**Blockers:** `enriched_jwt_check` / `jwt_check` require the native `jwt` module (included in default `NGINZ_MODULES`); all other handlers work with standard nginx
+**Blockers:** `enriched_jwt_check` / `jwt_check` require the native `jwt` module (included in the default `NGINZ_MODULES`); all other handlers work without an nginz native dependency
 
 FP-composable access control. Method, path, header, and JWT claim rules combined with `all_of` / `any_of` / `not_`. Remote OPA/Cedar decision via `http_client`. Result cache in `ngx.shared` by Bearer token hash. Downstream header injection for `auth_request` enrichment flows.
 

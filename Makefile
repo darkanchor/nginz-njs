@@ -1,35 +1,42 @@
-.PHONY: clean all nginz-packages
+.PHONY: clean all nginx nginz-packages
 
-# Native modules to compile from the nginz submodule.
-# Each name corresponds to a package directory under submodules/nginz/zig-out/modules/.
-# Available: echoz jwt hello requestid waf oidc ratelimit healthcheck canary circuit-breaker redis consul pgrest
+# nginz owns all native source pins. This project deliberately uses nginx's
+# standard configure/make flow for njs and QuickJS instead of nginz's monolithic
+# Zig-built runtime, then links only the native modules needed by this project.
+NGINZ_DIR := submodules/nginz
+NGINX_DIR := $(NGINZ_DIR)/submodules/nginx
+NJS_DIR := $(NGINZ_DIR)/submodules/njs
+QUICKJS_DIR := $(NGINZ_DIR)/submodules/quickjs
+NGINX_BIN := $(NGINX_DIR)/objs/nginx
+OPTIMIZE ?= ReleaseSmall
+
+# Available packages are emitted under $(NGINZ_DIR)/zig-out/modules/.
 NGINZ_MODULES ?= echoz jwt requestid circuit-breaker canary oidc
 
 all: nginx
 
-libquickjs.a:
-	cd submodules/quickjs && CFLAGS='-fPIC' make libquickjs.a
+$(QUICKJS_DIR)/libquickjs.a:
+	$(MAKE) -C $(QUICKJS_DIR) CFLAGS='-fPIC' libquickjs.a
 
-# Build selected nginz module packages via zig build.
-# Produces submodules/nginz/zig-out/modules/<name>/{<name>_module.o,libcjson.a,...,config}
 nginz-packages:
-	cd submodules/nginz && zig build package -Doptimize=ReleaseSmall
+	cd $(NGINZ_DIR) && zig build package -Doptimize=$(OPTIMIZE)
 
-# Compute --add-module flags from NGINZ_MODULES
-NGINZ_MODULE_FLAGS = $(foreach m,$(NGINZ_MODULES),--add-module=$(abspath submodules/nginz/zig-out/modules/$(m)))
+NGINZ_MODULE_FLAGS = $(foreach m,$(NGINZ_MODULES),--add-module=$(abspath $(NGINZ_DIR)/zig-out/modules/$(m)))
 
-nginx: libquickjs.a nginz-packages
-	cd submodules/nginx && ./auto/configure \
+nginx: $(QUICKJS_DIR)/libquickjs.a nginz-packages
+	cd $(NGINX_DIR) && ./auto/configure \
 		--with-http_ssl_module \
 		--with-http_v2_module \
 		--with-http_v3_module \
 		--with-stream \
 		--with-compat \
-		--add-module=../njs/nginx \
+		--add-module=$(abspath $(NJS_DIR)/nginx) \
 		$(NGINZ_MODULE_FLAGS) \
 		--with-cc-opt="-I ../quickjs" \
 		--with-ld-opt="-L ../quickjs" \
-		--with-debug && make
+		--with-debug
+	$(MAKE) -C $(NGINX_DIR)
+	test -x $(NGINX_BIN)
 
 clean:
-	rm -rf dist/nginx submodules/nginx/objs submodules/quickjs/libquickjs.a
+	rm -rf dist/nginx $(NGINX_DIR)/objs $(QUICKJS_DIR)/libquickjs.a

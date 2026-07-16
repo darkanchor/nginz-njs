@@ -330,7 +330,7 @@ Use `authz` to decide and annotate. Use response modules to render or mutate.
 
 ## Upstream enabler: njs PR #1044 (landed)
 
-Upstream njs PR `nginx/njs#1044` has merged and is now active in `submodules/njs`. It adds `js_access` plus request-body readers (`readRequestText()`, `readRequestJSON()`, `readRequestForm()`). The `ngs` package exposes these as `http.read_request_json`, `http.read_request_form`, and `http.read_request_text`.
+Upstream njs PR `nginx/njs#1044` has merged and is now active in `submodules/nginz/submodules/njs`. It adds `js_access` plus request-body readers (`readRequestText()`, `readRequestJSON()`, `readRequestForm()`). The `ngs` package exposes these as `http.read_request_json`, `http.read_request_form`, and `http.read_request_text`.
 
 **Phase 5 is implemented** using these APIs. Key behavioral invariants discovered during implementation:
 

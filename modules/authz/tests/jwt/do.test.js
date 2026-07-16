@@ -8,7 +8,7 @@ import {
 } from "../../../../scripts/harness.js";
 
 // Requires nginx built with the native jwt module:
-//   make NGINZ_MODULES="jwt"   (included in the default build)
+//   make   (the default NGINZ_MODULES includes jwt)
 
 const MODULE = "authz";
 const CONF = join(import.meta.dir, "nginx.conf");

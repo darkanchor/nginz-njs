@@ -8,7 +8,7 @@ import {
 } from "../../../../scripts/harness.js";
 
 // Requires nginx built with the native circuit-breaker module:
-//   make NGINZ_MODULES="echoz circuit-breaker"
+//   make   (the default NGINZ_MODULES includes echoz and circuit-breaker)
 
 const MODULE = "workflow";
 const CONF = join(import.meta.dir, "nginx.conf");

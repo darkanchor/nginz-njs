@@ -82,13 +82,13 @@ bun scripts/build.js authz           # one module
 
 ### Integration tests
 ```bash
-# Basic scenarios — standard nginx, always runnable
+# Basic scenarios — no feature-specific native dependency, but require `make`
 bun run test:int                       # modules/*/tests/basic/do.test.js
 bun test modules/authz/tests/basic/do.test.js  # one file
 KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep dist/<module>/logs/ for debug
 
 # Native module scenarios — requires nginx rebuilt with nginz modules
-make                                   # zig build package -Doptimize=ReleaseSmall + nginx configure + make
+make                                   # upstream nginx/njs/QuickJS build + packaged nginz modules
 bun run test:native                    # all scenarios including jwt, enrich, etc.
 ```
 
@@ -235,7 +235,7 @@ Follow the nginz ROADMAP (`./submodules/nginz/ROADMAP.md`) and `./submodules/ngi
 `ROADMAP.md` has the full scripted module roadmap. Module metadata (name, version, native deps) lives in each module's `gleam.toml` under `[metadata]`. Native nginz dependencies are declared as:
 ```toml
 [metadata.native]
-nginz = ["circuit-breaker"]   # list of module names from submodules/nginz/zig-out/modules/
+nginz = ["circuit-breaker"]   # module packages that must be linked into nginx
 ```
 Priority order:
 1. `http_client` — `ngx.fetch()` wrapper (no native dependency, highest leverage)
@@ -244,4 +244,4 @@ Priority order:
 4. `authz` — FP design reference; JWT claims need the native `jwt` module in the binary
 5. `session` — targets njs built-in `ngx.shared` for runtime backing
 
-The `Makefile` builds native modules from `submodules/nginz/` using `zig build package`. Default: `echoz jwt requestid`. Override with `make NGINZ_MODULES="echoz jwt requestid"`.
+The `Makefile` takes all native sources from `submodules/nginz/`: QuickJS and njs are built through nginx's standard configure/Makefile flow, while `zig build package` supplies the selected nginz modules. The integration harness runs `submodules/nginz/submodules/nginx/objs/nginx`. The default `NGINZ_MODULES` set is `echoz jwt requestid circuit-breaker canary oidc`.

@@ -5,7 +5,9 @@ import { join, isAbsolute } from "path";
 let nginxProcess = null;
 
 const ROOT = import.meta.dir.replace(/\/scripts$/, "");
-const NGINX_BIN = join(ROOT, "submodules/nginx/objs/nginx");
+const NGINX_BIN =
+  process.env.NGINX_BIN ??
+  join(ROOT, "submodules/nginz/submodules/nginx/objs/nginx");
 const TEST_PORT = 8888;
 
 export function ensureBuild(moduleNames) {

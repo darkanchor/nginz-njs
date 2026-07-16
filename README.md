@@ -157,31 +157,29 @@ git clone --recurse-submodules https://github.com/kaiwu/nginz-njs.git
 git submodule update --init --recursive
 ```
 
-This initializes four submodules:
+This initializes one top-level submodule and its nested dependencies:
 
 | Path | Contents |
 |---|---|
-| `submodules/nginx` | nginx source |
-| `submodules/njs` | njs scripting engine |
-| `submodules/quickjs` | QuickJS engine (used by njs) |
-| `submodules/nginz` | Native Zig modules (echoz, jwt, …) |
+| `submodules/nginz` | Native modules plus the nested nginx, njs, and QuickJS source pins |
 
 ### 2. Build nginx with native modules
 
 ```bash
-make                                      # default: echoz jwt requestid
-make NGINZ_MODULES="echoz jwt requestid"  # override the set
+make
+make OPTIMIZE=Debug                       # optional development build
+make NGINZ_MODULES="echoz jwt requestid"  # optional native-module selection
 ```
 
 What `make` does:
 
-1. **Builds QuickJS** (`libquickjs.a`) from `submodules/quickjs`
-2. **Builds nginz native modules** via `zig build package -Doptimize=ReleaseSmall` in `submodules/nginz` — produces `zig-out/modules/<name>/` with a linkable object file for each module
-3. **Configures and builds nginx** with `--add-module` flags for njs and each selected nginz module
+1. Builds QuickJS from `submodules/nginz/submodules/quickjs` with its standard Makefile.
+2. Runs `zig build package` in `submodules/nginz` to produce linkable native-module packages.
+3. Configures nginx from `submodules/nginz/submodules/nginx`, adding njs from the sibling nested source and the selected nginz packages, then builds it with nginx's standard Makefile.
 
-The resulting binary is at `submodules/nginx/objs/nginx`. The `Makefile` symlinks or exports `NGINX_BIN` so the integration test harness picks it up automatically.
+The resulting binary is at `submodules/nginz/submodules/nginx/objs/nginx`; the integration test harness uses that path directly. The default nginz module set is `echoz jwt requestid circuit-breaker canary oidc`, and native dependency checks inspect the modules actually linked into the binary.
 
-**This step is a prerequisite for native-module integration tests** (`bun run test:native`). Basic integration tests (`bun run test:int`) and unit tests (`bun run test:unit`) work without it.
+**This step is a prerequisite for all nginx integration tests** (`bun run test:int` and `bun run test:native`). Pure Gleam unit tests (`bun run test:unit`) do not require the native binary.
 
 ### 3. Activate git hooks
 
@@ -235,12 +233,12 @@ bun run test:unit authz          # gleam test for one module
 cd modules/authz && gleam test
 
 # --- integration tests ---
-bun run test:int                 # basic scenarios (standard nginx, always works)
+bun run test:int                 # basic scenarios (requires the project nginx build)
 bun test modules/authz/tests/basic/do.test.js  # one scenario
 KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep logs for debug
 
 # --- native module integration tests (requires rebuilt nginx) ---
-make                             # build nginx with the default native set: echoz + jwt + requestid
+make                             # upstream-style nginx/njs/QuickJS build + selected nginz modules
 bun run test:native              # all scenarios including native-module tests
 
 # --- both (unit + basic integration) ---
@@ -295,11 +293,8 @@ nginz-njs/
 ├── ROADMAP.md              ← scripted module roadmap
 ├── dist/                   ← build output (gitignored)
 ├── submodules/
-│   ├── nginx/              ← nginx source
-│   ├── njs/                ← njs scripting engine
-│   ├── quickjs/            ← QuickJS engine
-│   └── nginz/              ← native Zig modules (echoz, jwt, …)
-└── Makefile                ← builds nginx + selected nginz native modules
+│   └── nginz/              ← native packages and nested nginx/njs/QuickJS source pins
+└── Makefile                ← assembles the project nginx binary with the upstream build flow
 ```
 
 ## Per-module structure
@@ -398,11 +393,15 @@ When the performance-critical primitive is native (HMAC, JSON parsing, shared-me
 
 ## Relationship to nginz
 
-`nginz` is included as a submodule at `submodules/nginz/`. The `Makefile` builds selected native modules (default: `echoz`, `jwt`, `requestid`) via `zig build package` and links them into the nginx binary. The set of active modules is controlled by the `NGINZ_MODULES` variable:
+`nginz` is the only top-level native submodule. It owns the nginx, njs, and
+QuickJS source pins as nested submodules and packages the native modules used by
+this repository. The project deliberately assembles its nginx executable with
+nginx's standard configure/Makefile flow for njs and QuickJS, which provides a
+portable integration proof independent of nginz's monolithic Zig runtime build.
 
 ```bash
-make                              # build with default: echoz jwt requestid
-make NGINZ_MODULES="echoz jwt requestid"  # extend the set
+make
+make NGINZ_MODULES="echoz jwt requestid"
 ```
 
 Scripted modules in this repo orchestrate and compose the native primitives:

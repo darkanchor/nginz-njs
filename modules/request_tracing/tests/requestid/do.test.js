@@ -9,7 +9,7 @@ import {
 } from "../../../../scripts/harness.js";
 
 // Requires nginx built with the native requestid module:
-//   make NGINZ_MODULES="requestid"   (included in the default build)
+//   make   (the default NGINZ_MODULES includes requestid)
 
 const MODULE = "request_tracing";
 const CONF = join(import.meta.dir, "nginx.conf");

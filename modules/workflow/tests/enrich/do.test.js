@@ -8,7 +8,7 @@ import {
 } from "../../../../scripts/harness.js";
 
 // Requires nginx built with the native echoz module:
-//   make NGINZ_MODULES="echoz"   (included in the default build)
+//   make   (the default NGINZ_MODULES includes echoz)
 
 const MODULE = "workflow";
 const CONF = join(import.meta.dir, "nginx.conf");

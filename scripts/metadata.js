@@ -4,7 +4,8 @@ import { spawnSync } from "bun";
 
 const ROOT = import.meta.dir.replace(/\/scripts$/, "");
 export const NGINX_BIN =
-  process.env.NGINX_BIN ?? join(ROOT, "submodules/nginx/objs/nginx");
+  process.env.NGINX_BIN ??
+  join(ROOT, "submodules/nginz/submodules/nginx/objs/nginx");
 
 function tomlString(toml, key) {
   const m = toml.match(new RegExp(`^${key}\\s*=\\s*"([^"]+)"`, "m"));
