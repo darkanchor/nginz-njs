@@ -1,3 +1,4 @@
+import { gleamRuntimeCompatibility } from "./gleam_runtime_compat.js";
 import { spawnSync } from "bun";
 import { existsSync, copyFileSync, readdirSync, appendFileSync, statSync } from "fs";
 import { join } from "path";
@@ -61,6 +62,7 @@ async function buildModule(dirName) {
   if (!existsSync(entry)) throw new Error(`entry not found: ${entry}`);
 
   const result = await Bun.build({
+    plugins: [gleamRuntimeCompatibility],
     entrypoints: [entry],
     outdir: join(distDir, "njs"),
     naming: "app.js",
