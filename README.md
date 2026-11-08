@@ -169,6 +169,7 @@ This initializes one top-level submodule and its nested dependencies:
 make
 make OPTIMIZE=Debug                       # optional development build
 make NGINZ_MODULES="echoz jwt requestid"  # optional native-module selection
+make ZIG=/path/to/zig                    # optional Zig 0.17.x compiler selection
 ```
 
 What `make` does:
@@ -193,7 +194,7 @@ This installs a pre-commit hook that runs `gleam format` across all modules befo
 
 - [Gleam](https://gleam.run) >= 1.16.0
 - [Bun](https://bun.sh) >= 1.1.0
-- [Zig](https://ziglang.org) >= 0.16.0 (only needed for `make`)
+- [Zig](https://ziglang.org) 0.17.x (only needed for `make`)
 
 ## Dev / test / package
 

@@ -89,6 +89,7 @@ KEEP_LOGS=1 bun test modules/authz/tests/basic/do.test.js  # keep dist/<module>/
 
 # Native module scenarios — requires nginx rebuilt with nginz modules
 make                                   # upstream nginx/njs/QuickJS build + packaged nginz modules
+make ZIG=/path/to/zig                   # select a Zig 0.17.x compiler
 bun run test:native                    # all scenarios including jwt, enrich, etc.
 ```
 

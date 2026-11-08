@@ -9,6 +9,7 @@ NJS_DIR := $(NGINZ_DIR)/submodules/njs
 QUICKJS_DIR := $(NGINZ_DIR)/submodules/quickjs
 NGINX_BIN := $(NGINX_DIR)/objs/nginx
 OPTIMIZE ?= ReleaseSmall
+ZIG ?= zig
 
 # Available packages are emitted under $(NGINZ_DIR)/zig-out/modules/.
 NGINZ_MODULES ?= echoz jwt requestid circuit-breaker canary oidc
@@ -19,7 +20,7 @@ $(QUICKJS_DIR)/libquickjs.a:
 	$(MAKE) -C $(QUICKJS_DIR) CFLAGS='-fPIC' libquickjs.a
 
 nginz-packages:
-	cd $(NGINZ_DIR) && zig build package -Doptimize=$(OPTIMIZE)
+	cd $(NGINZ_DIR) && $(ZIG) build package -Doptimize=$(OPTIMIZE)
 
 NGINZ_MODULE_FLAGS = $(foreach m,$(NGINZ_MODULES),--add-module=$(abspath $(NGINZ_DIR)/zig-out/modules/$(m)))
 
